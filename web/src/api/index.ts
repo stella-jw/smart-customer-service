@@ -151,6 +151,12 @@ export const adminApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     }).then(r => r.json()),
+  updateBot: (botId: string, data: { name?: string; industry_type?: string; description?: string }) =>
+    authFetch(`${API_BASE}/api/admin/bots/${botId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }).then(r => r.json()),
   getDefaultBot: () => authFetch(`${API_BASE}/api/admin/bots/default`).then(r => r.json()),
   setDefaultBot: (botId: string) =>
     authFetch(`${API_BASE}/api/admin/bots/default/${botId}`, { method: 'PUT' }).then(r => r.json()),

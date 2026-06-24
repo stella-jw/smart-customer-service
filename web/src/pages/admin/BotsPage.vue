@@ -1,26 +1,29 @@
 <template>
   <div class="bots-page">
     <div class="page-header">
-      <h1>机器人管理</h1>
+      <h1>智能体管理</h1>
       <button @click="showCreateModal = true" :disabled="isAtLimit" class="btn-primary">
         {{ isAtLimit ? '已达上限 (5/5)' : '添加机器人' }}
       </button>
     </div>
 
-    <div v-if="botList.length === 0" class="empty-state">
+    <div v-if="sortedBotList.length === 0" class="empty-state">
       <p>暂无机器人，请点击上方按钮创建</p>
     </div>
 
     <div v-else class="bots-grid">
-      <div v-for="bot in botList" :key="bot.id" class="bot-card" :class="{ 'is-default': bot.is_default }">
+      <div v-for="bot in sortedBotList" :key="bot.id" class="bot-card" :class="{ 'is-default': bot.is_default }">
         <div v-if="bot.is_default" class="default-badge">默认</div>
         <div class="bot-header">
           <h3>{{ bot.name }}</h3>
           <span :class="['status-badge', bot.status]">{{ statusText[bot.status] }}</span>
         </div>
         <div class="bot-info">
-          <p><strong>行业:</strong> {{ industryText[bot.industry_type] || bot.industry_type }}</p>
-          <p v-if="bot.description"><strong>描述:</strong> {{ bot.description }}</p>
+          <div class="info-row"><span class="info-label">行业:</span> {{ industryText[bot.industry_type] || bot.industry_type }}</div>
+          <div class="info-row description-row">
+            <span class="info-label">描述:</span>
+            <span class="description-text">{{ bot.description ? (bot.description.length > 80 ? bot.description.slice(0, 80) + '...' : bot.description) : '-' }}</span>
+          </div>
         </div>
         <div class="bot-stats">
           <div class="stat">
@@ -44,7 +47,7 @@
         </div>
 
         <div class="bot-actions">
-          <button @click="editBot(bot)" class="btn-small btn-primary">配置</button>
+          <button @click="editBot(bot)" class="btn-small btn-primary">编辑</button>
           <button v-if="!bot.is_default" @click="confirmDelete(bot)" class="btn-small btn-danger">删除</button>
           <button v-else class="btn-small btn-disabled" :title="'无法删除默认机器人'" disabled>删除</button>
           <button v-if="!bot.is_default" @click="setAsDefault(bot)" class="btn-small btn-default">设为默认</button>
@@ -85,6 +88,37 @@
           <div class="modal-actions">
             <button type="button" @click="showCreateModal = false" class="btn-secondary">取消</button>
             <button type="submit" class="btn-primary">创建</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 编辑机器人弹窗 -->
+    <div v-if="showEditModal" class="modal-overlay" @click.self="showEditModal = false">
+      <div class="modal">
+        <h2>编辑机器人</h2>
+        <form @submit.prevent="updateBot">
+          <div class="form-group">
+            <label>名称</label>
+            <input v-model="editBotForm.name" type="text" placeholder="机器人名称" required />
+          </div>
+          <div class="form-group">
+            <label>行业类型</label>
+            <select v-model="editBotForm.industry_type" required>
+              <option value="ecommerce">电商</option>
+              <option value="medical">医疗</option>
+              <option value="saas">SaaS</option>
+              <option value="it">IT服务</option>
+              <option value="general">通用</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>描述</label>
+            <textarea v-model="editBotForm.description" placeholder="机器人描述（可选）"></textarea>
+          </div>
+          <div class="modal-actions">
+            <button type="button" @click="showEditModal = false" class="btn-secondary">取消</button>
+            <button type="submit" class="btn-primary">保存</button>
           </div>
         </form>
       </div>
@@ -223,11 +257,28 @@ import { adminApi } from '@/api'
 const router = useRouter()
 const { botList, isAtLimit, fetchBots, createBot: createBotStore, deleteBot: deleteBotStore } = useBotStore()
 
+// 排序后的机器人列表：默认优先，其余按创建顺序
+const sortedBotList = computed(() => {
+  return [...botList.value].sort((a, b) => {
+    if (a.is_default && !b.is_default) return -1
+    if (!a.is_default && b.is_default) return 1
+    return 0
+  })
+})
+
 // Create modal
 const showCreateModal = ref(false)
 const showDeleteModal = ref(false)
+const showEditModal = ref(false)
 const botToDelete = ref<any>(null)
+const editingBot = ref<any>(null)
 const botStats = ref<Record<string, any>>({})
+
+const editBotForm = ref({
+  name: '',
+  industry_type: 'general',
+  description: ''
+})
 
 // Knowledge base modal
 const showKnowledgeModal = ref(false)
@@ -301,9 +352,26 @@ async function loadStats() {
 }
 
 function editBot(bot: any) {
-  const { switchBot } = useBotStore()
-  switchBot(bot.id)
-  router.push('/admin/config')
+  editingBot.value = bot
+  editBotForm.value = {
+    name: bot.name,
+    industry_type: bot.industry_type,
+    description: bot.description || ''
+  }
+  showEditModal.value = true
+}
+
+async function updateBot() {
+  if (!editingBot.value) return
+  try {
+    const { name, industry_type, description } = editBotForm.value
+    await adminApi.updateBot(editingBot.value.id, { name, industry_type, description })
+    showEditModal.value = false
+    await fetchBots()
+  } catch (e) {
+    console.error('Failed to update bot:', e)
+    alert('更新失败')
+  }
 }
 
 function confirmDelete(bot: any) {
@@ -535,7 +603,6 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
 }
 
 .page-header h1 { font-size: 24px; color: #333; }
@@ -644,9 +711,14 @@ onMounted(async () => {
 .bot-card {
   background: white;
   border-radius: 12px;
-  padding: 20px;
+  padding: 16px 20px 20px 20px;
+  padding-top: 28px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 360px;
+  box-sizing: border-box;
 }
 
 .bot-card.is-default {
@@ -670,14 +742,16 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
-.bot-header h3 { margin: 0; font-size: 18px; }
+.bot-header h3 { margin: 0; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
 
 .status-badge {
   padding: 4px 10px;
   border-radius: 12px;
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .status-badge.active { background: #e8f5e9; color: #2e7d32; }
@@ -688,8 +762,38 @@ onMounted(async () => {
 .status-badge.indexed { background: #e8f5e9; color: #2e7d32; }
 .status-badge.failed { background: #ffebee; color: #c62828; }
 
-.bot-info { margin-bottom: 16px; }
-.bot-info p { margin: 6px 0; font-size: 14px; color: #666; }
+.bot-info {
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.info-row {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.info-label {
+  font-weight: 500;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.description-row {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  height: 2.8em;
+}
+
+.description-text {
+  word-break: break-word;
+}
 
 .bot-stats {
   display: flex;
@@ -697,7 +801,8 @@ onMounted(async () => {
   padding: 12px 0;
   border-top: 1px solid #eee;
   border-bottom: 1px solid #eee;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .stat {
@@ -719,7 +824,15 @@ onMounted(async () => {
 .feature-buttons {
   display: flex;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.bot-actions {
+  margin-top: auto;
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
 }
 
 .feature-btn {

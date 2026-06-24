@@ -8,19 +8,19 @@
       <nav class="sidebar-nav">
         <router-link to="/admin/bots" class="nav-item" :class="{ active: $route.path === '/admin/bots' }">
           <span class="nav-icon">🤖</span>
-          <span>机器人管理</span>
+          <span>智能体管理</span>
         </router-link>
         <router-link to="/admin/knowledge" class="nav-item" :class="{ active: $route.path === '/admin/knowledge' }">
           <span class="nav-icon">📚</span>
-          <span>知识库</span>
+          <span>知识库管理</span>
         </router-link>
         <router-link to="/admin/qa" class="nav-item" :class="{ active: $route.path === '/admin/qa' }">
           <span class="nav-icon">❓</span>
-          <span>QA管理</span>
+          <span>Q&A管理</span>
         </router-link>
         <router-link to="/admin/config" class="nav-item" :class="{ active: $route.path === '/admin/config' }">
           <span class="nav-icon">⚙️</span>
-          <span>机器人配置</span>
+          <span>智能体配置</span>
         </router-link>
       </nav>
     </aside>
@@ -30,7 +30,7 @@
       <!-- 顶部栏 -->
       <header class="top-bar">
         <div class="top-bar-left">
-          <BotSwitcher />
+          <BotSwitcher v-if="$route.path === '/admin/config'" />
         </div>
         <div class="top-bar-right">
           <span class="admin-name">管理员</span>
@@ -65,13 +65,18 @@ function logout() {
   min-height: 100vh;
 }
 
-/* 左侧导航 */
+/* 左侧导航 - 固定定位 */
 .sidebar {
   width: 220px;
   background: #2c3e50;
   color: white;
   display: flex;
   flex-direction: column;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 100;
 }
 
 .sidebar-header {
@@ -115,12 +120,16 @@ function logout() {
   font-size: 18px;
 }
 
-/* 右侧主内容 */
+/* 右侧主内容 - 留出左侧导航宽度 */
 .main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   background: #f5f5f5;
+  min-height: 100vh;
+  position: fixed;
+  left: 220px;
+  right: 0;
 }
 
 /* 顶部栏 */
@@ -168,7 +177,7 @@ function logout() {
 /* 内容区 */
 .content-area {
   flex: 1;
-  padding: 24px;
+  padding: 0px 36px;
   overflow-y: auto;
 }
 </style>
