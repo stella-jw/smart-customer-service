@@ -1,0 +1,395 @@
+<template>
+  <div class="chat-page">
+    <div class="chat-window">
+      <div class="chat-header">
+        <span class="bot-name">{{ botName }}</span>
+        <BotSwitcher v-if="isLoggedIn" />
+        <span class="session-info">{{ sessionId }}</span>
+      </div>
+
+      <div class="messages" ref="messagesRef">
+        <div
+          v-for="msg in messages"
+          :key="msg.id"
+          :class="['message', msg.isFromUser ? 'user' : 'bot']"
+        >
+          <div class="message-content">{{ msg.content }}</div>
+          <div class="message-meta">
+            <span v-if="msg.source && !msg.isFromUser" class="source-tag">
+              {{ getSourceLabel(msg.source) }}
+            </span>
+            <span class="time">{{ formatTime(msg.timestamp) }}</span>
+          </div>
+        </div>
+
+        <div v-if="loading" class="message bot">
+          <div class="message-content loading">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-input">
+        <input
+          v-model="inputMessage"
+          type="text"
+          placeholder="请输入您的问题..."
+          @keyup.enter="sendMessage"
+          :disabled="loading"
+        />
+        <button @click="sendMessage" :disabled="loading || !inputMessage.trim()">
+          发送
+        </button>
+      </div>
+    </div>
+
+    <!-- Rating Modal -->
+    <div v-if="showRating" class="modal-overlay" @click.self="showRating = false">
+      <div class="rating-modal">
+        <h3>评价回答</h3>
+        <p class="question">您对我的回答满意吗？</p>
+
+        <div class="rating-stars">
+          <span
+            v-for="star in 5"
+            :key="star"
+            :class="['star', { active: star <= rating }]"
+            @click="rating = star"
+          >
+            ★
+          </span>
+        </div>
+
+        <div class="rating-actions">
+          <button class="skip-btn" @click="showRating = false">跳过</button>
+          <button class="submit-btn" @click="submitRating" :disabled="rating === 0">
+            提交
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, nextTick, onMounted, onUnmounted, computed } from 'vue'
+import { chatApi, auth } from '@/api'
+import BotSwitcher from '@/components/BotSwitcher.vue'
+
+const botId = ref<string | null>(localStorage.getItem('current_bot_id') || null)
+const botName = computed(() => {
+  // Would need to fetch bot name - for now use default
+  return '智能客服'
+})
+const sessionId = ref(generateSessionId())
+const isLoggedIn = computed(() => auth.isLoggedIn())
+
+function generateSessionId() {
+  const id = localStorage.getItem('session_id') || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  localStorage.setItem('session_id', id)
+  return id
+}
+
+interface Message {
+  id: string
+  content: string
+  isFromUser: boolean
+  source: string
+  timestamp: Date
+}
+
+const messages = reactive<Message[]>([])
+const inputMessage = ref('')
+const loading = ref(false)
+const showRating = ref(false)
+const currentConversationId = ref('')
+const rating = ref(0)
+const messagesRef = ref<HTMLElement | null>(null)
+const lastUserActivity = ref<number>(Date.now())
+let ratingCheckTimer: number | null = null
+
+async function sendMessage() {
+  const text = inputMessage.value.trim()
+  if (!text || loading.value) return
+
+  // Reset activity timer when user sends message
+  lastUserActivity.value = Date.now()
+  hideRating()
+
+  messages.push({
+    id: `user_${Date.now()}`,
+    content: text,
+    isFromUser: true,
+    source: 'user',
+    timestamp: new Date()
+  })
+
+  inputMessage.value = ''
+  loading.value = true
+  scrollToBottom()
+
+  try {
+    const data = await chatApi.send({
+      bot_id: botId.value || undefined,  // undefined will cause backend to use default bot
+      session_id: sessionId.value,
+      message: text
+    })
+
+    messages.push({
+      id: data.conversation_id,
+      content: data.response,
+      isFromUser: false,
+      source: data.source,
+      timestamp: new Date()
+    })
+
+    currentConversationId.value = data.conversation_id
+  } catch {
+    messages.push({
+      id: `error_${Date.now()}`,
+      content: '抱歉，发生了错误，请稍后重试。',
+      isFromUser: false,
+      source: 'error',
+      timestamp: new Date()
+    })
+  } finally {
+    loading.value = false
+    scrollToBottom()
+  }
+}
+
+async function submitRating() {
+  if (rating.value === 0) return
+  try {
+    await chatApi.rate(currentConversationId.value, rating.value)
+  } catch { /* ignore */ }
+  showRating.value = false
+  rating.value = 0
+}
+
+function scrollToBottom() {
+  nextTick(() => {
+    if (messagesRef.value) {
+      messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+    }
+  })
+}
+
+function getSourceLabel(source: string) {
+  const labels: Record<string, string> = {
+    'qa': 'QA匹配',
+    'rag': '知识库',
+    'llm': 'AI生成',
+    'fallback': '兜底回复'
+  }
+  return labels[source] || ''
+}
+
+function formatTime(date: Date) {
+  return new Date(date).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+function checkInactivity() {
+  const INACTIVITY_TIMEOUT = 5 * 60 * 1000 // 5 minutes
+  if (Date.now() - lastUserActivity.value >= INACTIVITY_TIMEOUT) {
+    if (!showRating.value && currentConversationId.value) {
+      showRating.value = true
+    }
+  }
+}
+
+function hideRating() {
+  showRating.value = false
+}
+
+async function loadHistory() {
+  try {
+    const data = await chatApi.history(sessionId.value, botId.value || '')
+    messages.splice(0, messages.length)
+    data.messages.forEach((msg: Message) => {
+      messages.push({
+        ...msg,
+        isFromUser: msg.is_from_user,
+        timestamp: new Date(msg.timestamp)
+      })
+    })
+  } catch { /* ignore */ }
+}
+
+onMounted(() => {
+  loadHistory()
+  // Check inactivity every 30 seconds
+  ratingCheckTimer = window.setInterval(checkInactivity, 30000)
+})
+
+onUnmounted(() => {
+  if (ratingCheckTimer) {
+    clearInterval(ratingCheckTimer)
+  }
+})
+</script>
+
+<style scoped>
+.chat-page {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #f5f5f5;
+}
+
+.chat-window {
+  width: 800px;
+  max-width: 90vw;
+  height: 90vh;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-header {
+  padding: 16px 20px;
+  background: #4a90d9;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.session-info {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.message {
+  max-width: 75%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  line-height: 1.5;
+}
+
+.message.user {
+  align-self: flex-end;
+  background: #4a90d9;
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.message.bot {
+  align-self: flex-start;
+  background: #f0f0f0;
+  color: #333;
+  border-bottom-left-radius: 4px;
+}
+
+.message-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.source-tag {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.loading { display: flex; gap: 4px; padding: 16px 20px; }
+.dot {
+  width: 8px; height: 8px; background: #999; border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out;
+}
+.dot:nth-child(1) { animation-delay: 0s; }
+.dot:nth-child(2) { animation-delay: 0.2s; }
+.dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+
+.chat-input {
+  display: flex;
+  padding: 16px;
+  border-top: 1px solid #eee;
+  gap: 12px;
+}
+
+.chat-input input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+
+.chat-input input:focus { border-color: #4a90d9; }
+
+.chat-input button {
+  padding: 12px 24px;
+  background: #4a90d9;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.chat-input button:disabled { background: #ccc; cursor: not-allowed; }
+
+/* Rating Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.rating-modal {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  width: 320px;
+}
+
+.rating-modal h3 { margin: 0 0 12px 0; }
+.question { color: #666; margin-bottom: 16px; }
+
+.rating-stars { display: flex; justify-content: center; gap: 8px; margin-bottom: 20px; }
+.star { font-size: 32px; color: #ddd; cursor: pointer; }
+.star.active { color: #ffc107; }
+
+.rating-actions { display: flex; gap: 12px; justify-content: center; }
+
+.skip-btn, .submit-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.skip-btn { background: none; border: 1px solid #ddd; color: #666; }
+.submit-btn { background: #4a90d9; border: none; color: white; }
+.submit-btn:disabled { background: #ccc; }
+</style>
