@@ -1,5 +1,5 @@
 import { ref, computed, watch } from 'vue'
-import { adminApi } from '@/api'
+import { adminApi, userApi, auth } from '@/api'
 
 const BOT_LIMIT = 5
 
@@ -26,20 +26,36 @@ export function useBotStore() {
 
   const hasBots = computed(() => botList.value.length > 0)
 
+  // 判断是否为匿名用户
+  const isAnonymous = computed(() => auth.isAnonymous())
+
   async function fetchBots() {
     loading.value = true
     try {
-      const bots = await adminApi.getBots()
-      botList.value = bots
+      let bots
 
-      // 如果没有当前选中且有机器人，选择第一个
-      if (!currentBotId.value && bots.length > 0) {
-        currentBotId.value = bots[0].id
+      // 匿名用户和已登录用户使用不同的 API
+      if (auth.isAnonymous()) {
+        // 匿名用户通过 /api/bots 获取（后端会返回默认机器人）
+        const res = await fetch(`/api/bots`)
+        bots = await res.json()
+      } else {
+        // 已登录用户通过 /api/users/available-bots 获取
+        bots = await userApi.getAvailableBots()
       }
 
-      // 如果当前选中的被删了，重置
-      if (currentBotId.value && !bots.find(b => b.id === currentBotId.value)) {
-        currentBotId.value = bots[0]?.id || ''
+      botList.value = bots || []
+
+      // 如果没有当前选中，优先选择默认机器人，否则选择第一个
+      if (!currentBotId.value && bots && bots.length > 0) {
+        const defaultBot = bots.find((bot: any) => bot.is_default)
+        currentBotId.value = defaultBot?.id || bots[0].id
+      }
+
+      // 如果当前选中的被删了，优先选择默认机器人，否则选择第一个
+      if (currentBotId.value && !bots?.find((b: any) => b.id === currentBotId.value)) {
+        const defaultBot = bots?.find((bot: any) => bot.is_default)
+        currentBotId.value = defaultBot?.id || bots?.[0]?.id || ''
       }
     } catch (e) {
       console.error('Failed to fetch bots:', e)
@@ -59,14 +75,7 @@ export function useBotStore() {
   }
 
   async function deleteBot(botId: string) {
-    const res = await fetch(`/api/admin/bots/${botId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` }
-    })
-    if (!res.ok) {
-      const err = await res.json()
-      throw new Error(err.detail || '删除失败')
-    }
+    await adminApi.deleteBot(botId)
     await fetchBots()
   }
 
@@ -79,6 +88,7 @@ export function useBotStore() {
     // 计算属性
     isAtLimit,
     hasBots,
+    isAnonymous,
     BOT_LIMIT,
     // 方法
     fetchBots,

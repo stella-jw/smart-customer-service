@@ -59,7 +59,7 @@ async function handleLogin() {
 
   try {
     await authApi.login(username.value, password.value)
-    router.push('/admin/dashboard')
+    router.push('/admin/bots')
   } catch (e) {
     error.value = e instanceof Error ? e.message : '登录失败'
   } finally {

@@ -1,23 +1,29 @@
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
 // Token storage
-const TOKEN_KEY = 'admin_token'
-const ADMIN_ID_KEY = 'admin_id'
+const TOKEN_KEY = 'auth_token'
+const USER_ID_KEY = 'user_id'
+const USER_ROLE_KEY = 'user_role'
 
 export const auth = {
   getToken: () => localStorage.getItem(TOKEN_KEY),
   setToken: (token: string) => localStorage.setItem(TOKEN_KEY, token),
-  getAdminId: () => localStorage.getItem(ADMIN_ID_KEY),
-  setAdminId: (id: string) => localStorage.setItem(ADMIN_ID_KEY, id),
+  getUserId: () => localStorage.getItem(USER_ID_KEY),
+  setUserId: (id: string) => localStorage.setItem(USER_ID_KEY, id),
+  getUserRole: () => localStorage.getItem(USER_ROLE_KEY) || 'anonymous',
+  setUserRole: (role: string) => localStorage.setItem(USER_ROLE_KEY, role),
   clear: () => {
     localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(ADMIN_ID_KEY)
+    localStorage.removeItem(USER_ID_KEY)
+    localStorage.removeItem(USER_ROLE_KEY)
   },
-  isLoggedIn: () => !!localStorage.getItem(TOKEN_KEY)
+  isLoggedIn: () => !!localStorage.getItem(TOKEN_KEY),
+  isAdmin: () => localStorage.getItem(USER_ROLE_KEY) === 'admin',
+  isAnonymous: () => !localStorage.getItem(TOKEN_KEY)
 }
 
 // Auth-aware fetch
-async function authFetch(url: string, options: RequestInit = {}) {
+async function authFetch(url: string, options: RequestInit = {}, requireAuth: boolean = true) {
   const token = auth.getToken()
   const headers = {
     ...(options.headers || {}),
@@ -30,8 +36,14 @@ async function authFetch(url: string, options: RequestInit = {}) {
 
   if (res.status === 401) {
     auth.clear()
-    window.location.href = '/admin/login'
+    if (requireAuth) {
+      window.location.href = '/admin/login'
+    }
     throw new Error('Unauthorized')
+  }
+
+  if (res.status === 403) {
+    throw new Error('Forbidden')
   }
 
   return res
@@ -50,15 +62,16 @@ export const authApi = {
     }
     const data = await res.json()
     auth.setToken(data.token)
-    auth.setAdminId(data.admin_id)
+    auth.setUserId(data.user_id)
+    auth.setUserRole(data.role)
     return data
   },
 
-  register: async (username: string, password: string) => {
+  register: async (username: string, password: string, role: string = 'internal') => {
     const res = await fetch(`${API_BASE}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password, role })
     })
     if (!res.ok) {
       const err = await res.json()
@@ -66,22 +79,62 @@ export const authApi = {
     }
     const data = await res.json()
     auth.setToken(data.token)
-    auth.setAdminId(data.admin_id)
+    auth.setUserId(data.user_id)
+    auth.setUserRole(data.role)
     return data
   },
 
   verify: async () => {
     const token = auth.getToken()
-    if (!token) return { valid: false }
+    if (!token) return { valid: false, role: 'anonymous' }
     const res = await fetch(`${API_BASE}/api/auth/verify`, {
       headers: { Authorization: `Bearer ${token}` }
     })
     if (!res.ok) {
       auth.clear()
-      return { valid: false }
+      return { valid: false, role: 'anonymous' }
     }
-    return res.json()
+    const data = await res.json()
+    auth.setUserRole(data.role)
+    return data
+  },
+
+  logout: async () => {
+    auth.clear()
   }
+}
+
+export const userApi = {
+  getMe: () => authFetch(`${API_BASE}/api/users/me`, {}, false).then(r => r.json()),
+  getAvailableBots: () => authFetch(`${API_BASE}/api/users/available-bots`, {}, false).then(r => r.json())
+}
+
+export const teamApi = {
+  getTeams: () => authFetch(`${API_BASE}/api/teams`).then(r => r.json()),
+  createTeam: (name: string) =>
+    authFetch(`${API_BASE}/api/teams`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    }).then(r => r.json()),
+  updateTeam: (id: string, name: string) =>
+    authFetch(`${API_BASE}/api/teams/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    }).then(r => r.json()),
+  deleteTeam: (id: string) =>
+    authFetch(`${API_BASE}/api/teams/${id}`, { method: 'DELETE' }).then(r => r.json()),
+  getTeamMembers: (teamId: string) =>
+    authFetch(`${API_BASE}/api/teams/${teamId}/members`).then(r => r.json()),
+  addTeamMember: (teamId: string, userId: string) =>
+    authFetch(`${API_BASE}/api/teams/${teamId}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId })
+    }).then(r => r.json()),
+  removeTeamMember: (teamId: string, userId: string) =>
+    authFetch(`${API_BASE}/api/teams/${teamId}/members/${userId}`, { method: 'DELETE' }).then(r => r.json())
 }
 
 interface ChatRequest {
@@ -216,5 +269,22 @@ export const adminApi = {
 
   // Analytics
   getAnalytics: (botId: string) =>
-    authFetch(`${API_BASE}/api/admin/analytics/${botId}`).then(r => r.json())
+    authFetch(`${API_BASE}/api/admin/analytics/${botId}`).then(r => r.json()),
+
+  // Bot Access Control
+  getBotAccess: (botId: string) =>
+    authFetch(`${API_BASE}/api/admin/bots/${botId}/access`).then(r => r.json()),
+  updateBotAccess: (botId: string, accessType: string, allowedUsers: string[], allowedTeams: string[]) =>
+    authFetch(`${API_BASE}/api/admin/bots/${botId}/access`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        access_type: accessType,
+        allowed_users: allowedUsers,
+        allowed_teams: allowedTeams
+      })
+    }).then(r => r.json()),
+
+  // Users (for admin)
+  getUsers: () => authFetch(`${API_BASE}/api/admin/users`).then(r => r.json())
 }

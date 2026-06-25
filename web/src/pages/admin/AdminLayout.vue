@@ -22,6 +22,14 @@
           <span class="nav-icon">⚙️</span>
           <span>智能体配置</span>
         </router-link>
+        <router-link to="/admin/teams" class="nav-item" :class="{ active: $route.path === '/admin/teams' }">
+          <span class="nav-icon">👥</span>
+          <span>团队管理</span>
+        </router-link>
+        <router-link to="/admin/bot-access" class="nav-item" :class="{ active: $route.path === '/admin/bot-access' }">
+          <span class="nav-icon">🔐</span>
+          <span>机器人权限</span>
+        </router-link>
       </nav>
     </aside>
 
@@ -130,6 +138,8 @@ function logout() {
   position: fixed;
   left: 220px;
   right: 0;
+  top: 0;
+  bottom: 0;
 }
 
 /* 顶部栏 */
@@ -177,7 +187,7 @@ function logout() {
 /* 内容区 */
 .content-area {
   flex: 1;
-  padding: 0px 36px;
+  padding: 10px 36px;
   overflow-y: auto;
 }
 </style>

@@ -1,5 +1,10 @@
 <template>
-  <div class="bot-switcher" v-if="hasBots">
+  <!-- 匿名用户不显示机器人选择器，使用默认机器人 -->
+  <div v-if="isAnonymous" class="bot-switcher anonymous">
+    <span class="bot-name">{{ currentBot?.name || '智能客服' }}</span>
+  </div>
+  <!-- 已登录用户显示机器人选择器 -->
+  <div v-else-if="hasBots" class="bot-switcher">
     <div class="switcher-trigger" @click="toggleDropdown">
       <span class="bot-name">{{ currentBot?.name || '选择机器人' }}</span>
       <span class="arrow" :class="{ open: isOpen }">▼</span>
@@ -23,8 +28,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useBotStore } from '@/stores/botStore'
+import { auth } from '@/api'
 
-const { currentBotId, currentBot, botList, hasBots, fetchBots, switchBot } = useBotStore()
+const { currentBotId, currentBot, botList, hasBots, isAnonymous, fetchBots, switchBot } = useBotStore()
 
 const isOpen = ref(false)
 
@@ -65,6 +71,10 @@ onUnmounted(() => {
 <style scoped>
 .bot-switcher {
   position: relative;
+}
+
+.bot-switcher.anonymous .bot-name {
+  color: white;
 }
 
 .switcher-trigger {

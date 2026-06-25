@@ -3,7 +3,7 @@
     <div class="chat-window">
       <div class="chat-header">
         <span class="bot-name">{{ botName }}</span>
-        <BotSwitcher v-if="isLoggedIn" />
+        <BotSwitcher />
         <span class="session-info">{{ sessionId }}</span>
       </div>
 
@@ -245,10 +245,8 @@ async function loadHistory() {
 }
 
 onMounted(async () => {
-  // Initialize bot selection for logged-in users
-  if (isLoggedIn.value) {
-    await botStore.fetchBots()
-  }
+  // Initialize bot selection (botStore handles anonymous vs logged-in)
+  await botStore.fetchBots()
   loadHistory()
   // Check inactivity every 30 seconds
   ratingCheckTimer = window.setInterval(checkInactivity, 30000)
