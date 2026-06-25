@@ -31,7 +31,7 @@
             <span class="stat-label">对话总数</span>
           </div>
           <div class="stat">
-            <span class="stat-value">{{ getBotStats(bot.id).avg_satisfaction || 0 }}%</span>
+            <span class="stat-value" :class="getSatisfactionClass(getBotStats(bot.id).avg_satisfaction)">{{ getBotStats(bot.id).avg_satisfaction || 0 }}%</span>
             <span class="stat-label">满意度</span>
           </div>
         </div>
@@ -336,6 +336,13 @@ const filteredBotQA = computed(() => {
 
 function getBotStats(botId: string) {
   return botStats.value[botId] || {}
+}
+
+function getSatisfactionClass(rate: number) {
+  if (!rate) return ''
+  if (rate >= 85) return 'stat-value-green'
+  if (rate >= 60) return 'stat-value-orange'
+  return 'stat-value-red'
 }
 
 async function loadStats() {
@@ -815,6 +822,10 @@ onMounted(async () => {
   font-weight: 600;
   color: #333;
 }
+
+.stat-value-green { color: #4caf50; }
+.stat-value-orange { color: #ff9800; }
+.stat-value-red { color: #f44336; }
 
 .stat-label {
   font-size: 12px;

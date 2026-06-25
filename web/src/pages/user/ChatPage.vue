@@ -63,7 +63,7 @@
         </div>
 
         <div class="rating-actions">
-          <button class="skip-btn" @click="showRating = false">跳过</button>
+          <button class="skip-btn" @click="skipRating">跳过</button>
           <button class="submit-btn" @click="submitRating" :disabled="rating === 0">
             提交
           </button>
@@ -74,11 +74,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, nextTick, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, nextTick, onMounted, onUnmounted, computed, watch } from 'vue'
 import { chatApi, auth } from '@/api'
 import BotSwitcher from '@/components/BotSwitcher.vue'
+import { useBotStore } from '@/stores/botStore'
 
-const botId = ref<string | null>(localStorage.getItem('current_bot_id') || null)
+const botStore = useBotStore()
+const botId = computed(() => botStore.currentBotId || null)
 const botName = computed(() => {
   // Would need to fetch bot name - for now use default
   return '智能客服'
@@ -87,10 +89,25 @@ const sessionId = ref(generateSessionId())
 const isLoggedIn = computed(() => auth.isLoggedIn())
 
 function generateSessionId() {
-  const id = localStorage.getItem('session_id') || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  const id = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   localStorage.setItem('session_id', id)
   return id
 }
+
+function resetConversation() {
+  messages.splice(0, messages.length)
+  sessionId.value = generateSessionId()
+  currentConversationId.value = ''
+  ratingCompleted.value = false
+  hideRating()
+}
+
+// 监听机器人切换，清空对话开始新的会话
+watch(() => botStore.currentBotId, (newBotId, oldBotId) => {
+  if (newBotId && newBotId !== oldBotId && messages.length > 0) {
+    resetConversation()
+  }
+})
 
 interface Message {
   id: string
@@ -108,6 +125,7 @@ const currentConversationId = ref('')
 const rating = ref(0)
 const messagesRef = ref<HTMLElement | null>(null)
 const lastUserActivity = ref<number>(Date.now())
+const ratingCompleted = ref(false) // 当前会话是否已完成评价
 let ratingCheckTimer: number | null = null
 
 async function sendMessage() {
@@ -116,6 +134,7 @@ async function sendMessage() {
 
   // Reset activity timer when user sends message
   lastUserActivity.value = Date.now()
+  ratingCompleted.value = false // 用户发送新消息，重置评价状态
   hideRating()
 
   messages.push({
@@ -166,6 +185,13 @@ async function submitRating() {
     await chatApi.rate(currentConversationId.value, rating.value)
   } catch { /* ignore */ }
   showRating.value = false
+  ratingCompleted.value = true
+  rating.value = 0
+}
+
+function skipRating() {
+  showRating.value = false
+  ratingCompleted.value = true
   rating.value = 0
 }
 
@@ -194,7 +220,7 @@ function formatTime(date: Date) {
 function checkInactivity() {
   const INACTIVITY_TIMEOUT = 5 * 60 * 1000 // 5 minutes
   if (Date.now() - lastUserActivity.value >= INACTIVITY_TIMEOUT) {
-    if (!showRating.value && currentConversationId.value) {
+    if (!showRating.value && currentConversationId.value && !ratingCompleted.value) {
       showRating.value = true
     }
   }
@@ -218,7 +244,11 @@ async function loadHistory() {
   } catch { /* ignore */ }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // Initialize bot selection for logged-in users
+  if (isLoggedIn.value) {
+    await botStore.fetchBots()
+  }
   loadHistory()
   // Check inactivity every 30 seconds
   ratingCheckTimer = window.setInterval(checkInactivity, 30000)

@@ -23,24 +23,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useBotStore } from '@/stores/botStore'
-import { adminApi } from '@/api'
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
 const { currentBotId, currentBot, botList, hasBots, fetchBots, switchBot } = useBotStore()
-
-// Fetch public bots for selector
-async function fetchPublicBots() {
-  try {
-    const res = await fetch(`${API_BASE}/api/bots`)
-    if (res.ok) {
-      const bots = await res.json()
-      botList.value = bots
-    }
-  } catch (e) {
-    console.error('Failed to fetch public bots:', e)
-  }
-}
 
 const isOpen = ref(false)
 
@@ -69,7 +53,7 @@ function handleClickOutside(e: MouseEvent) {
 }
 
 onMounted(() => {
-  fetchPublicBots()
+  fetchBots()
   document.addEventListener('click', handleClickOutside)
 })
 
