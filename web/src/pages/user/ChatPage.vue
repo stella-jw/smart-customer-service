@@ -80,7 +80,7 @@ import BotSwitcher from '@/components/BotSwitcher.vue'
 import { useBotStore } from '@/stores/botStore'
 
 const botStore = useBotStore()
-const botId = computed(() => botStore.currentBotId || null)
+const botId = computed(() => botStore.currentBotId.value || null)
 const botName = computed(() => {
   // Would need to fetch bot name - for now use default
   return '智能客服'
@@ -151,7 +151,7 @@ async function sendMessage() {
 
   try {
     const data = await chatApi.send({
-      bot_id: botId.value || undefined,  // undefined will cause backend to use default bot
+      bot_id: botId.value || undefined,
       session_id: sessionId.value,
       message: text
     })
@@ -165,7 +165,8 @@ async function sendMessage() {
     })
 
     currentConversationId.value = data.conversation_id
-  } catch {
+  } catch (error) {
+    console.error('Chat error:', error)
     messages.push({
       id: `error_${Date.now()}`,
       content: '抱歉，发生了错误，请稍后重试。',
