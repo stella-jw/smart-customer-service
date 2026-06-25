@@ -7,6 +7,7 @@ LLM生成节点
 import json
 from typing import Dict, Any
 from ..state import CustomerServiceState, QuerySource
+import config as cfg
 
 
 def generate_response(state: CustomerServiceState) -> CustomerServiceState:
@@ -35,8 +36,7 @@ def generate_response(state: CustomerServiceState) -> CustomerServiceState:
 
     try:
         from langchain_openai import ChatOpenAI
-        from langchain.schema import HumanMessage, SystemMessage
-        import config as cfg
+        from langchain_core.messages import HumanMessage, SystemMessage
 
         llm = ChatOpenAI(
             api_key=cfg.MINIMAX_API_KEY,

@@ -123,7 +123,7 @@ LANGSMITH_TRACING = os.getenv("LANGSMITH_TRACING", "false").lower() == "true"
 LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY", "")
 
 # LangSmith Project 名称
-LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "family-agent")
+LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "smart-customer-service")
 
 # 启用 LangSmith 追踪
 if LANGSMITH_TRACING and LANGSMITH_API_KEY:
