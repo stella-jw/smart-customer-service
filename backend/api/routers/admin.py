@@ -20,6 +20,7 @@ from ...db.sqlite import (
     get_bot_analytics
 )
 from ...db.sqlite.crud import get_db_session, set_default_bot, get_default_bot, count_bots, get_all_bots_with_default
+from ...db.sqlite.crud import get_bot_access, create_or_update_bot_access, get_all_users
 from ...core.auth import verify_admin_token
 
 
@@ -102,6 +103,25 @@ class AnalyticsResponse(BaseModel):
     qa_match_rate: float
     document_count: int
     qa_pair_count: int
+
+
+class BotAccessRequest(BaseModel):
+    access_type: str  # "all" | "specific_users" | "specific_teams"
+    allowed_users: List[str] = []
+    allowed_teams: List[str] = []
+
+
+class BotAccessResponse(BaseModel):
+    bot_id: str
+    access_type: str
+    allowed_users: List[str] = []
+    allowed_teams: List[str] = []
+
+
+class UserResponse(BaseModel):
+    id: str
+    username: str
+    role: str
 
 
 class TemplateResponse(BaseModel):
@@ -327,6 +347,69 @@ async def update_config(bot_id: str, request: BotConfigRequest, _: dict = Depend
         raise
     except Exception as e:
         print(f"[API] /api/admin/bots/{bot_id}/config PUT 错误: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================
+# Bot 访问权限 API
+# =============================================
+
+@router.get("/bots/{bot_id}/access", response_model=BotAccessResponse)
+async def get_access_config(bot_id: str, _: dict = Depends(verify_admin_token)):
+    """获取机器人访问配置"""
+    try:
+        with get_db_session() as db:
+            bot = get_bot(db, bot_id)
+            if not bot:
+                raise HTTPException(status_code=404, detail="Bot不存在")
+
+            access = get_bot_access(db, bot_id)
+            if not access:
+                # 返回默认配置（所有人可访问）
+                return BotAccessResponse(
+                    bot_id=bot_id,
+                    access_type="all",
+                    allowed_users=[],
+                    allowed_teams=[]
+                )
+            return BotAccessResponse(
+                bot_id=bot_id,
+                access_type=access.access_type.value,
+                allowed_users=access.allowed_users or [],
+                allowed_teams=access.allowed_teams or []
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[API] /api/admin/bots/{bot_id}/access GET 错误: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/bots/{bot_id}/access", response_model=BotAccessResponse)
+async def update_access_config(bot_id: str, request: BotAccessRequest, _: dict = Depends(verify_admin_token)):
+    """更新机器人访问配置"""
+    try:
+        with get_db_session() as db:
+            bot = get_bot(db, bot_id)
+            if not bot:
+                raise HTTPException(status_code=404, detail="Bot不存在")
+
+            access = create_or_update_bot_access(
+                db, bot_id,
+                access_type=request.access_type,
+                allowed_users=request.allowed_users,
+                allowed_teams=request.allowed_teams
+            )
+            return BotAccessResponse(
+                bot_id=bot_id,
+                access_type=access.access_type.value,
+                allowed_users=access.allowed_users or [],
+                allowed_teams=access.allowed_teams or []
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[API] /api/admin/bots/{bot_id}/access PUT 错误: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -565,4 +648,27 @@ async def get_bot_chunks(bot_id: str, _: dict = Depends(verify_admin_token)):
         }
     except Exception as e:
         print(f"[API] /api/admin/chunks/{bot_id} GET 错误: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================
+# User 管理 API
+# =============================================
+
+@router.get("/users", response_model=List[UserResponse])
+async def list_users(_: dict = Depends(verify_admin_token)):
+    """获取所有用户列表（仅管理员）"""
+    try:
+        with get_db_session() as db:
+            users = get_all_users(db)
+            return [
+                UserResponse(
+                    id=user.id,
+                    username=user.username,
+                    role=user.role.value
+                )
+                for user in users
+            ]
+    except Exception as e:
+        print(f"[API] /api/admin/users GET 错误: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -12,7 +12,8 @@ from sqlalchemy import and_, or_
 
 from .models import (
     Base, Bot, Document, QAPair, Conversation, Rating,
-    BotConfiguration, IndustryTemplate, Admin, BotStatus, DocumentStatus, ConversationSource
+    BotConfiguration, IndustryTemplate, Admin, User, Team, TeamMember, BotAccess,
+    BotStatus, DocumentStatus, ConversationSource, UserRole, AccessType
 )
 
 
@@ -430,6 +431,187 @@ def get_admin_by_id(db: Session, admin_id: str) -> Optional[Admin]:
 
 
 # =============================================
+# User CRUD
+# =============================================
+
+def create_user(db: Session, username: str, password_hash: str, role: str = "internal") -> User:
+    """创建用户"""
+    from .models import User as UserModel, UserRole
+    user = UserModel(
+        id=generate_id(),
+        username=username,
+        password_hash=password_hash,
+        role=UserRole(role) if isinstance(role, str) else role
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def get_user_by_username(db: Session, username: str) -> Optional[User]:
+    """根据用户名获取用户"""
+    return db.query(User).filter(User.username == username).first()
+
+
+def get_user_by_id(db: Session, user_id: str) -> Optional[User]:
+    """根据ID获取用户"""
+    return db.query(User).filter(User.id == user_id).first()
+
+
+def get_all_users(db: Session) -> List[User]:
+    """获取所有用户"""
+    return db.query(User).all()
+
+
+# =============================================
+# Team CRUD
+# =============================================
+
+def create_team(db: Session, name: str) -> Team:
+    """创建团队"""
+    team = Team(
+        id=generate_id(),
+        name=name
+    )
+    db.add(team)
+    db.commit()
+    db.refresh(team)
+    return team
+
+
+def get_team(db: Session, team_id: str) -> Optional[Team]:
+    """获取团队"""
+    return db.query(Team).filter(Team.id == team_id).first()
+
+
+def get_all_teams(db: Session) -> List[Team]:
+    """获取所有团队"""
+    return db.query(Team).all()
+
+
+def update_team(db: Session, team_id: str, name: str) -> Optional[Team]:
+    """更新团队"""
+    team = get_team(db, team_id)
+    if team:
+        team.name = name
+        db.commit()
+        db.refresh(team)
+    return team
+
+
+def delete_team(db: Session, team_id: str) -> bool:
+    """删除团队"""
+    team = get_team(db, team_id)
+    if team:
+        db.delete(team)
+        db.commit()
+        return True
+    return False
+
+
+def add_team_member(db: Session, team_id: str, user_id: str) -> TeamMember:
+    """添加团队成员"""
+    member = TeamMember(
+        team_id=team_id,
+        user_id=user_id
+    )
+    db.add(member)
+    db.commit()
+    db.refresh(member)
+    return member
+
+
+def remove_team_member(db: Session, team_id: str, user_id: str) -> bool:
+    """移除团队成员"""
+    member = db.query(TeamMember).filter(
+        TeamMember.team_id == team_id,
+        TeamMember.user_id == user_id
+    ).first()
+    if member:
+        db.delete(member)
+        db.commit()
+        return True
+    return False
+
+
+def get_user_teams(db: Session, user_id: str) -> List[Team]:
+    """获取用户所属的团队"""
+    memberships = db.query(TeamMember).filter(TeamMember.user_id == user_id).all()
+    team_ids = [m.team_id for m in memberships]
+    return db.query(Team).filter(Team.id.in_(team_ids)).all() if team_ids else []
+
+
+def get_team_members(db: Session, team_id: str) -> List[User]:
+    """获取团队的所有成员"""
+    memberships = db.query(TeamMember).filter(TeamMember.team_id == team_id).all()
+    user_ids = [m.user_id for m in memberships]
+    return db.query(User).filter(User.id.in_(user_ids)).all() if user_ids else []
+
+
+# =============================================
+# BotAccess CRUD
+# =============================================
+
+def get_bot_access(db: Session, bot_id: str) -> Optional[BotAccess]:
+    """获取机器人访问配置"""
+    return db.query(BotAccess).filter(BotAccess.bot_id == bot_id).first()
+
+
+def create_or_update_bot_access(db: Session, bot_id: str, access_type: str,
+                                allowed_users: list = None, allowed_teams: list = None) -> BotAccess:
+    """创建或更新机器人访问配置"""
+    from .models import AccessType
+    access = get_bot_access(db, bot_id)
+    if access:
+        access.access_type = AccessType(access_type) if isinstance(access_type, str) else access_type
+        access.allowed_users = allowed_users or []
+        access.allowed_teams = allowed_teams or []
+        access.updated_at = datetime.now()
+    else:
+        access = BotAccess(
+            bot_id=bot_id,
+            access_type=AccessType(access_type) if isinstance(access_type, str) else access_type,
+            allowed_users=allowed_users or [],
+            allowed_teams=allowed_teams or []
+        )
+        db.add(access)
+    db.commit()
+    db.refresh(access)
+    return access
+
+
+def check_user_bot_access(db: Session, user_id: str, team_ids: list, bot_id: str) -> bool:
+    """检查用户是否有权访问指定机器人"""
+    from .models import AccessType
+    access = get_bot_access(db, bot_id)
+    if not access or access.access_type == AccessType.ALL:
+        return True
+    if access.access_type == AccessType.SPECIFIC_USERS:
+        return user_id in (access.allowed_users or [])
+    if access.access_type == AccessType.SPECIFIC_TEAMS:
+        return any(tid in (access.allowed_teams or []) for tid in team_ids)
+    return False
+
+
+def get_accessible_bots(db: Session, user_id: str = None, team_ids: list = None,
+                        is_anonymous: bool = False) -> List[Bot]:
+    """获取用户可访问的机器人列表"""
+    from .models import AccessType
+    all_bots = db.query(Bot).filter(Bot.status == BotStatus.ACTIVE).all()
+    if is_anonymous:
+        # 匿名用户只能访问默认机器人
+        return [b for b in all_bots if b.is_default]
+    if not user_id:
+        return all_bots
+    accessible = []
+    for bot in all_bots:
+        if check_user_bot_access(db, user_id, team_ids or [], bot.id):
+            accessible.append(bot)
+    return accessible
+
+
+# =============================================
 # Analytics
 # =============================================
 
@@ -441,25 +623,30 @@ def get_bot_analytics(db: Session, bot_id: str, days: int = 7) -> dict:
     now = datetime.now()
     start_date = now - timedelta(days=days)
 
-    # 总对话数
-    total_conversations = db.query(func.count(Conversation.id)).filter(
+    # 总对话数（按session_id去重）
+    total_conversations = db.query(func.count(func.distinct(Conversation.session_id))).filter(
         Conversation.bot_id == bot_id
     ).scalar()
 
-    # 今日对话数
-    today_conversations = db.query(func.count(Conversation.id)).filter(
+    # 今日对话数（按session_id去重）
+    today_conversations = db.query(func.count(func.distinct(Conversation.session_id))).filter(
         and_(
             Conversation.bot_id == bot_id,
             Conversation.created_at >= now - timedelta(days=1)
         )
     ).scalar()
 
-    # 平均满意度
-    avg_satisfaction = db.query(func.avg(Rating.rating)).filter(
-        Rating.bot_id == bot_id
+    # 平均满意度（只统计近期的评分，转换为百分比）
+    # 5星=100%, 4星=80%, 3星=60%, 2星=40%, 1星=20%
+    avg_rating = db.query(func.avg(Rating.rating)).filter(
+        and_(
+            Rating.bot_id == bot_id,
+            Rating.created_at >= start_date
+        )
     ).scalar()
+    avg_satisfaction = (avg_rating * 20) if avg_rating else 0
 
-    # RAG命中率
+    # RAG命中数（消息数）
     rag_count = db.query(func.count(Conversation.id)).filter(
         and_(
             Conversation.bot_id == bot_id,
@@ -467,7 +654,7 @@ def get_bot_analytics(db: Session, bot_id: str, days: int = 7) -> dict:
         )
     ).scalar()
 
-    # QA匹配率
+    # QA匹配数（消息数）
     qa_count = db.query(func.count(Conversation.id)).filter(
         and_(
             Conversation.bot_id == bot_id,
@@ -475,8 +662,13 @@ def get_bot_analytics(db: Session, bot_id: str, days: int = 7) -> dict:
         )
     ).scalar()
 
-    rag_hit_rate = (rag_count / total_conversations * 100) if total_conversations > 0 else 0
-    qa_match_rate = (qa_count / total_conversations * 100) if total_conversations > 0 else 0
+    # 总消息数（作为命中率的分母）
+    total_messages = db.query(func.count(Conversation.id)).filter(
+        Conversation.bot_id == bot_id
+    ).scalar()
+
+    rag_hit_rate = (rag_count / total_messages * 100) if total_messages > 0 else 0
+    qa_match_rate = (qa_count / total_messages * 100) if total_messages > 0 else 0
 
     # 文档数
     doc_count = db.query(func.count(Document.id)).filter(

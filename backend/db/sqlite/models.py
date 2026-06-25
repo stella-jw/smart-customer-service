@@ -37,6 +37,17 @@ class ConversationSource(str, PyEnum):
     FALLBACK = "fallback"
 
 
+class UserRole(str, PyEnum):
+    INTERNAL = "internal"
+    ADMIN = "admin"
+
+
+class AccessType(str, PyEnum):
+    ALL = "all"
+    SPECIFIC_USERS = "specific_users"
+    SPECIFIC_TEAMS = "specific_teams"
+
+
 class Bot(Base):
     """机器人表"""
     __tablename__ = "bots"
@@ -203,6 +214,60 @@ class Admin(Base):
     username = Column(String(50), nullable=False, unique=True)
     password_hash = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.now)
+
+
+class User(Base):
+    """内部用户表"""
+    __tablename__ = "users"
+
+    id = Column(String(36), primary_key=True)
+    username = Column(String(50), nullable=False, unique=True)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(Enum(UserRole), default=UserRole.INTERNAL)
+    created_at = Column(DateTime, default=datetime.now)
+
+    # 关系
+    team_memberships = relationship("TeamMember", back_populates="user", cascade="all, delete-orphan")
+
+
+class Team(Base):
+    """团队表"""
+    __tablename__ = "teams"
+
+    id = Column(String(36), primary_key=True)
+    name = Column(String(100), nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+
+    # 关系
+    members = relationship("TeamMember", back_populates="team", cascade="all, delete-orphan")
+
+
+class TeamMember(Base):
+    """团队成员表"""
+    __tablename__ = "team_members"
+
+    team_id = Column(String(36), ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    joined_at = Column(DateTime, default=datetime.now)
+
+    # 关系
+    team = relationship("Team", back_populates="members")
+    user = relationship("User", back_populates="team_memberships")
+
+
+class BotAccess(Base):
+    """机器人访问权限表"""
+    __tablename__ = "bot_access"
+
+    bot_id = Column(String(36), ForeignKey("bots.id", ondelete="CASCADE"), primary_key=True)
+    access_type = Column(Enum(AccessType), default=AccessType.ALL)
+    allowed_users = Column(JSON, default=list)  # [user_id, ...]
+    allowed_teams = Column(JSON, default=list)  # [team_id, ...]
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    # 关系
+    bot = relationship("Bot")
 
 
 # =============================================

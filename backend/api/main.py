@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import config
 from backend.db.sqlite import init_database
-from backend.api.routers import chat_router, admin_router, knowledge_router, auth_router
+from backend.api.routers import chat_router, admin_router, knowledge_router, auth_router, users_router, teams_router
 from pydantic import BaseModel
 
 
@@ -73,6 +73,8 @@ app.include_router(chat_router)      # /api/chat, /api/history, /api/rate
 app.include_router(admin_router)     # /api/admin/*
 app.include_router(knowledge_router)  # /api/admin/documents/*
 app.include_router(auth_router)      # /api/auth/*
+app.include_router(users_router)     # /api/users/*
+app.include_router(teams_router)     # /api/teams/*
 
 
 # =============================================

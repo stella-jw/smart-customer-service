@@ -6,7 +6,7 @@
 
 from typing import Optional, List
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel
 
 import sys
@@ -19,6 +19,7 @@ from ...db.sqlite import (
     get_bot, ConversationSource
 )
 from ...db.sqlite.crud import get_db_session, get_all_bots_with_default
+from ...core.auth import decode_token, verify_password
 
 
 router = APIRouter(prefix="/api", tags=["用户端"])
@@ -90,7 +91,7 @@ class PublicBotResponse(BaseModel):
 # =============================================
 
 @router.post("/chat", response_model=ChatResponse)
-async def send_message(request: ChatRequest):
+async def send_message(request: ChatRequest, authorization: Optional[str] = Header(None)):
     """
     发送消息并获取回复
 
@@ -102,11 +103,25 @@ async def send_message(request: ChatRequest):
     try:
         from ...db.sqlite import get_bot_config, create_conversation
         from ...db.sqlite.crud import get_db_session, get_bot, get_default_bot, increment_qa_usage
+        from ...db.sqlite.crud import check_user_bot_access, get_user_teams
         from ...db.sqlite.models import ConversationSource
 
         config_dict = {}
         user_conv_id = ""
         bot_id = request.bot_id
+
+        # 解析用户信息（可选）
+        user_id = request.user_id
+        user_role = "anonymous"
+        user_team_ids = []
+
+        if authorization:
+            token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
+            payload = decode_token(token)
+            if payload:
+                user_id = payload.get("sub")
+                user_role = payload.get("role", "anonymous")
+                user_team_ids = payload.get("team_ids", [])
 
         # 在session中获取bot配置和保存用户消息
         with get_db_session() as db:
@@ -120,6 +135,14 @@ async def send_message(request: ChatRequest):
             bot = get_bot(db, bot_id)
             if not bot:
                 raise HTTPException(status_code=404, detail=f"Bot不存在: {bot_id}")
+
+            # 检查机器人访问权限
+            has_access = check_user_bot_access(db, user_id or "", user_team_ids, bot_id)
+            if not has_access:
+                raise HTTPException(
+                    status_code=403,
+                    detail="您没有权限使用此机器人"
+                )
 
             bot_config = get_bot_config(db, bot_id)
             if bot_config:
@@ -268,14 +291,34 @@ async def rate_conversation(request: RateRequest):
 
 
 @router.get("/bots", response_model=List[PublicBotResponse])
-async def list_public_bots():
+async def list_public_bots(authorization: Optional[str] = Header(None)):
     """
-    获取公开的机器人列表（无需认证）
-    用于客户端选择机器人
+    获取机器人列表（根据用户权限返回不同的机器人）
+    - 匿名用户：只能看到默认机器人
+    - 登录用户：能看到有权限访问的机器人
     """
     try:
+        from ...db.sqlite.crud import get_accessible_bots
+
+        # 解析用户信息
+        user_id = None
+        user_role = "anonymous"
+        user_team_ids = []
+
+        if authorization:
+            token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
+            payload = decode_token(token)
+            if payload:
+                user_id = payload.get("sub")
+                user_role = payload.get("role", "anonymous")
+                user_team_ids = payload.get("team_ids", [])
+
         with get_db_session() as db:
-            bots = get_all_bots_with_default(db)
+            if user_role == "anonymous" or not user_id:
+                bots = get_accessible_bots(db, is_anonymous=True)
+            else:
+                bots = get_accessible_bots(db, user_id, user_team_ids)
+
             return [
                 PublicBotResponse(
                     id=bot.id,
@@ -284,7 +327,7 @@ async def list_public_bots():
                     description=bot.description,
                     is_default=bot.is_default
                 )
-                for bot in bots if bot.status.value == "active"
+                for bot in bots
             ]
     except Exception as e:
         print(f"[API] /api/bots 错误: {e}")
