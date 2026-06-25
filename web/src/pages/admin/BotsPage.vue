@@ -3,12 +3,12 @@
     <div class="page-header">
       <h1>智能体管理</h1>
       <button @click="showCreateModal = true" :disabled="isAtLimit" class="btn-primary">
-        {{ isAtLimit ? '已达上限 (5/5)' : '添加机器人' }}
+        {{ isAtLimit ? '已达上限 (5/5)' : '添加智能体' }}
       </button>
     </div>
 
     <div v-if="sortedBotList.length === 0" class="empty-state">
-      <p>暂无机器人，请点击上方按钮创建</p>
+      <p>暂无智能体，请点击上方按钮创建</p>
     </div>
 
     <div v-else class="bots-grid">
@@ -49,41 +49,53 @@
         <div class="bot-actions">
           <button @click="editBot(bot)" class="btn-small btn-primary">编辑</button>
           <button v-if="!bot.is_default" @click="confirmDelete(bot)" class="btn-small btn-danger">删除</button>
-          <button v-else class="btn-small btn-disabled" :title="'无法删除默认机器人'" disabled>删除</button>
+          <button v-else class="btn-small btn-disabled" :title="'无法删除默认智能体'" disabled>删除</button>
           <button v-if="!bot.is_default" @click="setAsDefault(bot)" class="btn-small btn-default">设为默认</button>
         </div>
       </div>
     </div>
 
-    <!-- 创建机器人弹窗 -->
+    <!-- 创建智能体弹窗 -->
     <div v-if="showCreateModal" class="modal-overlay" @click.self="showCreateModal = false">
       <div class="modal">
-        <h2>创建机器人</h2>
+        <h2>创建智能体</h2>
         <form @submit.prevent="createBot">
-          <div class="form-group">
-            <label>名称</label>
-            <input v-model="newBot.name" type="text" placeholder="机器人名称" required />
+          <div class="form-row">
+            <div class="form-group">
+              <label>名称</label>
+              <input v-model="newBot.name" type="text" placeholder="智能体名称" required />
+            </div>
+            <div class="form-group">
+              <label>行业类型</label>
+              <select v-model="newBot.industry_type" required>
+                <option value="ecommerce">电商</option>
+                <option value="medical">医疗</option>
+                <option value="saas">SaaS</option>
+                <option value="it">IT服务</option>
+                <option value="general">通用</option>
+              </select>
+            </div>
           </div>
-          <div class="form-group">
-            <label>行业类型</label>
-            <select v-model="newBot.industry_type" required>
-              <option value="ecommerce">电商</option>
-              <option value="medical">医疗</option>
-              <option value="saas">SaaS</option>
-              <option value="it">IT服务</option>
-              <option value="general">通用</option>
-            </select>
+          <div class="form-group form-group-full">
+            <label>系统提示词</label>
+            <textarea
+              v-model="newBot.system_prompt"
+              rows="4"
+              maxlength="1200"
+              placeholder="定义智能体的角色设定和行为规则..."
+            ></textarea>
+            <div class="char-count">{{ (newBot.system_prompt || '').length }} / 1200</div>
           </div>
-          <div class="form-group">
+          <div class="form-group form-group-full">
             <label>描述</label>
-            <textarea v-model="newBot.description" placeholder="机器人描述（可选）"></textarea>
+            <textarea v-model="newBot.description" placeholder="智能体描述（可选）"></textarea>
           </div>
-          <div class="form-group checkbox-group">
-            <label class="checkbox-label">
+          <div class="default-checkbox-row">
+            <label class="default-checkbox-label">
               <input v-model="newBot.set_as_default" type="checkbox" />
-              <span>设为默认机器人</span>
+              <span>设为默认智能体</span>
             </label>
-            <p class="checkbox-hint">默认机器人将自动接待未指定机器人的客户</p>
+            <span class="tooltip-icon" title="默认智能体将自动接待未指定智能体的客户">ⓘ</span>
           </div>
           <div class="modal-actions">
             <button type="button" @click="showCreateModal = false" class="btn-secondary">取消</button>
@@ -93,28 +105,47 @@
       </div>
     </div>
 
-    <!-- 编辑机器人弹窗 -->
+    <!-- 编辑智能体弹窗 -->
     <div v-if="showEditModal" class="modal-overlay" @click.self="showEditModal = false">
       <div class="modal">
-        <h2>编辑机器人</h2>
+        <h2>编辑智能体</h2>
         <form @submit.prevent="updateBot">
-          <div class="form-group">
-            <label>名称</label>
-            <input v-model="editBotForm.name" type="text" placeholder="机器人名称" required />
+          <div class="form-row">
+            <div class="form-group">
+              <label>名称</label>
+              <input v-model="editBotForm.name" type="text" placeholder="智能体名称" required />
+            </div>
+            <div class="form-group">
+              <label>行业类型</label>
+              <select v-model="editBotForm.industry_type" required>
+                <option value="ecommerce">电商</option>
+                <option value="medical">医疗</option>
+                <option value="saas">SaaS</option>
+                <option value="it">IT服务</option>
+                <option value="general">通用</option>
+              </select>
+            </div>
           </div>
-          <div class="form-group">
-            <label>行业类型</label>
-            <select v-model="editBotForm.industry_type" required>
-              <option value="ecommerce">电商</option>
-              <option value="medical">医疗</option>
-              <option value="saas">SaaS</option>
-              <option value="it">IT服务</option>
-              <option value="general">通用</option>
-            </select>
+          <div class="form-group form-group-full">
+            <label>系统提示词</label>
+            <textarea
+              v-model="editBotForm.system_prompt"
+              rows="4"
+              maxlength="1200"
+              placeholder="定义智能体的角色设定和行为规则..."
+            ></textarea>
+            <div class="char-count">{{ (editBotForm.system_prompt || '').length }} / 1200</div>
           </div>
-          <div class="form-group">
+          <div class="form-group form-group-full">
             <label>描述</label>
-            <textarea v-model="editBotForm.description" placeholder="机器人描述（可选）"></textarea>
+            <textarea v-model="editBotForm.description" placeholder="智能体描述（可选）"></textarea>
+          </div>
+          <div class="default-checkbox-row">
+            <label class="default-checkbox-label">
+              <input v-model="editBotForm.set_as_default" type="checkbox" />
+              <span>设为默认智能体</span>
+            </label>
+            <span class="tooltip-icon" title="默认智能体将自动接待未指定智能体的客户">ⓘ</span>
           </div>
           <div class="modal-actions">
             <button type="button" @click="showEditModal = false" class="btn-secondary">取消</button>
@@ -128,7 +159,7 @@
     <div v-if="showDeleteModal" class="modal-overlay" @click.self="showDeleteModal = false">
       <div class="modal">
         <h2>确认删除</h2>
-        <p>确定要删除机器人 "{{ botToDelete?.name }}" 吗？此操作不可恢复。</p>
+        <p>确定要删除智能体 "{{ botToDelete?.name }}" 吗？此操作不可恢复。</p>
         <div class="modal-actions">
           <button @click="showDeleteModal = false" class="btn-secondary">取消</button>
           <button @click="deleteBot" class="btn-danger">删除</button>
@@ -136,11 +167,11 @@
       </div>
     </div>
 
-    <!-- 首个机器人默认机器人确认弹窗 -->
+    <!-- 首个智能体默认智能体确认弹窗 -->
     <div v-if="showFirstBotDialog" class="modal-overlay">
       <div class="modal">
-        <h2>设置默认机器人</h2>
-        <p>您还没有设置默认机器人。客户在聊天窗口时，如果没有设置默认机器人，将会看到报错信息。</p>
+        <h2>设置默认智能体</h2>
+        <p>您还没有设置默认智能体。客户在聊天窗口时，如果没有设置默认智能体，将会看到报错信息。</p>
         <div class="modal-actions">
           <button @click="cancelSetFirstBotDefault" class="btn-secondary">取消</button>
           <button @click="confirmSetFirstBotDefault" class="btn-primary">确认</button>
@@ -257,7 +288,7 @@ import { adminApi } from '@/api'
 const router = useRouter()
 const { botList, isAtLimit, fetchBots, createBot: createBotStore, deleteBot: deleteBotStore } = useBotStore()
 
-// 排序后的机器人列表：默认优先，其余按创建顺序
+// 排序后的智能体列表：默认优先，其余按创建顺序
 const sortedBotList = computed(() => {
   return [...botList.value].sort((a, b) => {
     if (a.is_default && !b.is_default) return -1
@@ -277,7 +308,9 @@ const botStats = ref<Record<string, any>>({})
 const editBotForm = ref({
   name: '',
   industry_type: 'general',
-  description: ''
+  description: '',
+  system_prompt: '',
+  set_as_default: false
 })
 
 // Knowledge base modal
@@ -300,6 +333,7 @@ const newBot = ref({
   name: '',
   industry_type: 'general',
   description: '',
+  system_prompt: '',
   set_as_default: false
 })
 
@@ -358,12 +392,26 @@ async function loadStats() {
   botStats.value = stats
 }
 
-function editBot(bot: any) {
+async function editBot(bot: any) {
   editingBot.value = bot
-  editBotForm.value = {
-    name: bot.name,
-    industry_type: bot.industry_type,
-    description: bot.description || ''
+  // Load full config including system_prompt
+  try {
+    const config = await adminApi.getBotConfig(bot.id)
+    editBotForm.value = {
+      name: bot.name,
+      industry_type: bot.industry_type,
+      description: bot.description || '',
+      system_prompt: config.system_prompt || '',
+      set_as_default: bot.is_default || false
+    }
+  } catch (e) {
+    editBotForm.value = {
+      name: bot.name,
+      industry_type: bot.industry_type,
+      description: bot.description || '',
+      system_prompt: '',
+      set_as_default: bot.is_default || false
+    }
   }
   showEditModal.value = true
 }
@@ -371,8 +419,8 @@ function editBot(bot: any) {
 async function updateBot() {
   if (!editingBot.value) return
   try {
-    const { name, industry_type, description } = editBotForm.value
-    await adminApi.updateBot(editingBot.value.id, { name, industry_type, description })
+    const { name, industry_type, description, system_prompt } = editBotForm.value
+    await adminApi.updateBotConfig(editingBot.value.id, { name, industry_type, description, system_prompt })
     showEditModal.value = false
     await fetchBots()
   } catch (e) {
@@ -388,9 +436,14 @@ function confirmDelete(bot: any) {
 
 async function createBot() {
   try {
-    const { name, industry_type, description, set_as_default } = newBot.value
+    const { name, industry_type, description, system_prompt, set_as_default } = newBot.value
     const result = await createBotStore({ name, industry_type, description })
     const botId = typeof result === 'object' ? result.id : result
+
+    // Save system_prompt via updateBotConfig
+    if (botId && system_prompt) {
+      await adminApi.updateBotConfig(botId, { system_prompt })
+    }
 
     // If checkbox was checked, set as default directly
     if (set_as_default && botId) {
@@ -399,7 +452,7 @@ async function createBot() {
     }
 
     showCreateModal.value = false
-    newBot.value = { name: '', industry_type: 'general', description: '', set_as_default: false }
+    newBot.value = { name: '', industry_type: 'general', description: '', system_prompt: '', set_as_default: false }
     await loadStats()
 
     // If this is the first bot and checkbox wasn't checked, show confirmation dialog
@@ -419,7 +472,7 @@ async function setAsDefault(bot: any) {
     await fetchBots()
   } catch (e) {
     console.error('Failed to set default bot:', e)
-    alert('设置默认机器人失败')
+    alert('设置默认智能体失败')
   }
 }
 
@@ -493,7 +546,7 @@ async function uploadDocument() {
 
   // Check max 10 documents limit
   if (botDocuments.value.length >= 10) {
-    alert('每个机器人最多上传10个文档，请先删除部分文档')
+    alert('每个智能体最多上传10个文档，请先删除部分文档')
     return
   }
 
@@ -676,31 +729,6 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
-.checkbox-group {
-  margin-top: 16px;
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 8px;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.checkbox-label input {
-  width: 18px;
-  height: 18px;
-}
-
-.checkbox-hint {
-  margin: 4px 0 0 26px;
-  font-size: 12px;
-  color: #999;
-}
-
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -881,7 +909,7 @@ onMounted(async () => {
   border-radius: 12px;
   padding: 24px;
   width: 90%;
-  max-width: 400px;
+  max-width: 560px;
 }
 
 .modal-large {
@@ -890,10 +918,21 @@ onMounted(async () => {
   overflow-y: auto;
 }
 
-.modal h2 { margin: 0 0 20px 0; font-size: 18px; }
+.modal h2 { margin: 0 0 20px 0; font-size: 18px; color: #333;}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.form-row .form-group {
+  flex: 1;
+  margin-bottom: 0;
+}
 
 .form-group { margin-bottom: 16px; }
-.form-group label { display: block; margin-bottom: 6px; font-size: 14px; color: #666; }
+.form-group label { display: block; margin-bottom: 6px; font-size: 16px; color: #666; text-align: left; }
 .form-group input,
 .form-group select,
 .form-group textarea {
@@ -905,7 +944,69 @@ onMounted(async () => {
   box-sizing: border-box;
 }
 
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-group-full {
+  margin-bottom: 16px;
+}
+
+.char-count {
+  font-size: 12px;
+  color: #999;
+  text-align: right;
+  margin-top: 4px;
+}
+
+.checkbox-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.checkbox-label-row input {
+  width: 18px;
+  height: 18px;
+}
+
+.checkbox-hint-row {
+  font-size: 12px;
+  color: #999;
+  margin: 0;
+}
+
+.default-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.default-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
+}
+
+.default-checkbox-label input {
+  width: 18px;
+  height: 18px;
+}
+
+.tooltip-icon {
+  color: #999;
+  cursor: help;
+  font-size: 16px;
+  position: relative;
+}
+
+.tooltip-icon:hover {
+  color: #4a90d9;
+}
 
 .modal-actions {
   display: flex;

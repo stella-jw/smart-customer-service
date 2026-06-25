@@ -86,6 +86,7 @@ class BotConfigRequest(BaseModel):
     timeout_message: Optional[str] = None
     personality: Optional[str] = None
     response_tone: Optional[str] = None
+    system_prompt: Optional[str] = None
     enable_rag: Optional[bool] = None
     enable_qa_match: Optional[bool] = None
     enable_chitchat: Optional[bool] = None

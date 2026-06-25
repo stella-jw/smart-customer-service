@@ -25,8 +25,17 @@ def generate_response(state: CustomerServiceState) -> CustomerServiceState:
     tone = bot_config.get("response_tone", "friendly")
     personality = bot_config.get("personality", "friendly")
 
+    # 获取系统提示词
+    system_prompt = bot_config.get("system_prompt", "")
+    if not system_prompt:
+        # 如果没有配置系统提示词，使用基于人格的默认提示词
+        from ...db.sqlite.crud import get_default_system_prompt
+        industry_type = bot_config.get("industry_type", "general")
+        system_prompt = get_default_system_prompt(industry_type, personality)
+
     try:
         from langchain_openai import ChatOpenAI
+        from langchain.schema import HumanMessage, SystemMessage
         import config as cfg
 
         llm = ChatOpenAI(
@@ -43,7 +52,7 @@ def generate_response(state: CustomerServiceState) -> CustomerServiceState:
                 for chunk in state["retrieved_chunks"]
             ])
 
-            prompt = f"""基于以下知识库内容，回答用户问题。如果内容不足以回答，请说明"根据现有资料..."。
+            user_prompt = f"""基于以下知识库内容，回答用户问题。如果内容不足以回答，请说明"根据现有资料..."。
 
 知识库内容:
 {context}
@@ -51,50 +60,38 @@ def generate_response(state: CustomerServiceState) -> CustomerServiceState:
 用户问题: {user_input}
 
 回答要求:
-- 语气: {tone}
-- 性格: {personality}
 - 简洁明了，突出关键信息
 - 如果涉及具体数据或步骤，请准确引用
 """
 
         elif source == QuerySource.QA:
             # QA模式: 直接使用答案
-            prompt = f"""请将以下回答润色成自然的客服回复语气。
+            user_prompt = f"""请将以下回答润色成自然的客服回复语气。
 
 原始回答: {state['matched_qa_answer']}
 
 用户问题: {user_input}
-
-语气要求: {tone}
-性格要求: {personality}
-- 如果正式，回复要专业严谨
-- 如果亲切，要友好温暖
-- 如果幽默，可以轻松活泼
-- 如果同理心，要表达理解和关怀
 """
 
         else:
             # 兜底回复或闲聊
             if bot_config.get("enable_chitchat", True):
-                prompt = f"""请生成一个友好的客服回复。
+                user_prompt = f"""请生成一个友好的客服回复。
 
 用户问题: {user_input}
-
-语气要求: {tone}
-性格要求: {personality}
-- 可以适当寒暄
-- 引导用户提出具体问题
 """
             else:
-                prompt = f"""请生成一个简洁的回复，引导用户提出具体问题。
+                user_prompt = f"""请生成一个简洁的回复，引导用户提出具体问题。
 
 用户问题: {user_input}
-
-语气: {tone}
-回复要求: 简洁友好，引导用户咨询具体问题
 """
 
-        response = llm.invoke(prompt)
+        # 调用 LLM，传入系统提示词
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt)
+        ]
+        response = llm.invoke(messages)
 
         return {
             "generated_response": response.content

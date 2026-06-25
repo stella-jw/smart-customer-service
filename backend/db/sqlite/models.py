@@ -167,6 +167,7 @@ class BotConfiguration(Base):
     # 机器人人格
     personality = Column(String(50), default="friendly")  # professional/friendly/humorous/empathetic
     response_tone = Column(String(50), default="friendly")  # formal/casual/brief/detailed
+    system_prompt = Column(Text)  # 系统提示词
 
     # 功能开关
     enable_rag = Column(Boolean, default=True)
