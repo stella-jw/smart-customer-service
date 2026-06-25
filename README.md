@@ -66,7 +66,7 @@
 │  └───────────────┘     └─────┬──────┘                           │
 │        │                  ├──greeting──▶ respond                │
 │        │                  ├──question──▶ qa_match ─┐            │
-│        │                  └──other──────▶ generate─┼──▶ respond |
+│        │                  └──other──────▶ generate─┼──▶ respond │
 │        │                                    rag_retrieve──▶     │
 │        │                                          generate──▶   │
 │        │                                                        │
@@ -95,15 +95,16 @@
 ┌───────────────────────────────────────┐
 │  2. QA匹配 (qa_match)                 │
 │     - ChromaDB 向量相似度搜索           │
-│     - similarity >= 0.85 ?            │
+│     - similarity >= 阈值 ?             │
 │     - 命中 → 直接返回答案                │
 └───────────────────────────────────────┘
     │
     ▼ (QA未命中)
 ┌───────────────────────────────────────┐
 │  3. RAG检索 (rag_retrieve)            │
-│     - 知识库向量搜索 top_k=5           │
-│     - 获取相关文档片段                  │
+│     - 知识库向量搜索 (rag_top_k)        │
+│     - [可选] Cohere Rerank 精排        │
+│     - 返回 rag_rerank_top_k 个结果     │
 └───────────────────────────────────────┘
     │
     ▼
@@ -134,6 +135,7 @@
 | REST API | FastAPI |
 | 前端 | Vue 3 + Vite + TypeScript |
 | 文档解析 | PyPDF2/pdfplumber + python-docx |
+| Rerank精排 | Cohere Rerank API（cohere-rerank-3.5） |
 
 ## 项目结构
 
@@ -159,7 +161,7 @@ smart-customer-service/
 │   │   └── nodes/            # 工作流节点
 │   │       ├── classify.py   # 意图分类
 │   │       ├── qa_match.py   # QA匹配
-│   │       ├── retrieve.py    # RAG检索
+│   │       ├── retrieve.py   # RAG检索 + Rerank精排
 │   │       ├── generate.py   # 响应生成
 │   │       └── respond.py    # 最终回复
 │   └── service/
@@ -172,19 +174,17 @@ smart-customer-service/
 │   │   ├── router/           # 路由配置
 │   │   ├── pages/
 │   │   │   ├── user/        # 用户端页面 (ChatPage, HistoryPage)
-│   │   │   └── admin/       # Admin 页面 (BotsPage, DashboardPage...)
+│   │   │   └── admin/       # Admin 页面 (BotConfigPage...)
 │   │   └── components/      # 公共组件 (BotSwitcher)
-│   ├── admin/                # Admin 管理页面 (legacy)
-│   ├── user/                 # 用户端组件 (RatingModal, chatStore)
 │   ├── chunks-viewer.html    # 向量片段查看器
 │   └── vite.config.ts        # Vite 配置
 ├── data/
 │   ├── chroma_db/             # 向量数据库
 │   ├── documents/             # 原始文档
-│   └── customer_service.db     # SQLite 数据库
-├── migrations/                 # 数据库迁移脚本
-├── config.py                  # 配置文件
-├── requirements.txt           # Python 依赖
+│   └── customer_service.db   # SQLite 数据库
+├── migrations/               # 数据库迁移脚本
+├── config.py                 # 配置文件
+├── requirements.txt          # Python 依赖
 └── README.md
 ```
 
@@ -193,7 +193,8 @@ smart-customer-service/
 ### 1. 克隆项目
 
 ```bash
-cd /Users/yiliatang/AI/agent-demo/smart-customer-service
+git clone https://github.com/stella-jw/smart-customer-service.git
+cd smart-customer-service
 ```
 
 ### 2. 创建虚拟环境
@@ -209,11 +210,22 @@ source venv/bin/activate  # macOS/Linux
 pip install -r requirements.txt
 ```
 
-### 4. 配置 MiniMax API Key
+### 4. 配置环境变量
 
 ```bash
-cp .env.example .env
-# 编辑 .env 文件，填入 MINIMAX_API_KEY
+cp .env.example .env  # 如有 .env.example
+# 或手动创建 .env 文件，参考 .env 部分
+```
+
+**必须配置的环境变量：**
+
+```bash
+# MiniMax API Key（从 MiniMax 开放平台获取）
+MINIMAX_API_KEY=your-minimax-api-key
+
+# Cohere API Key（从 https://dashboard.cohere.com/api-keys 获取）
+# 用于 Rerank 精排功能，如不配置则自动跳过精排
+COHERE_API_KEY=your-cohere-api-key
 ```
 
 ### 5. 初始化数据库
@@ -294,8 +306,18 @@ npm run dev
 | 人格 | personality (专业/友好/幽默/同理心) |
 | 语气 | response_tone (正式/亲切/简洁/详细) |
 | 功能开关 | enable_rag / enable_qa_match / enable_chitchat / enable_rating |
-| 检索参数 | rag_top_k / qa_match_threshold |
+| **检索参数** | **rag_top_k**（候选数量）/ **rag_rerank_top_k**（精排返回数量） |
 | 评价设置 | require_feedback (是否必填评价) |
+
+### RAG 检索参数说明
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `rag_top_k` | 15 | 内部向量搜索候选数量，建议 10-20 |
+| `rag_rerank_top_k` | 5 | Cohere Rerank 精排后返回数量，必须 ≤ rag_top_k |
+| `qa_match_threshold` | 0.85 | QA 匹配相似度阈值 |
+
+> **Rerank 精排机制**：当 `COHERE_API_KEY` 配置后，系统会先用 `rag_top_k` 进行向量搜索获取候选文档，再通过 Cohere Rerank API 进行精排，返回最相关的 `rag_rerank_top_k` 个结果。未配置 API Key 时，自动 fallback 到原始向量搜索。
 
 ## 行业模板
 
@@ -308,7 +330,13 @@ npm run dev
 
 ## 数据库迁移
 
-新版本增加了默认机器人功能，需要执行迁移：
+### 添加 rag_rerank_top_k 字段
+
+```bash
+python migrations/add_rag_rerank_column.py
+```
+
+### 添加默认机器人字段
 
 ```bash
 python migrations/add_default_bot_column.py
@@ -331,6 +359,12 @@ rm -rf ./data/chroma_db/
 1. 检查 `qa_match_threshold` 配置（默认 0.85），降低阈值可提高匹配率
 2. 确认 QA 对已正确添加到 ChromaDB（可通过 chunks-viewer.html 查看）
 3. 如果是之前添加的 QA 对，需要删除后重新添加才能生效
+
+### Q: Rerank 精排不生效
+
+1. 确认 `.env` 中已配置 `COHERE_API_KEY`
+2. 检查后端日志是否包含 `[Reranker] Cohere 精排完成` 信息
+3. 如未配置 API Key，系统自动 fallback 到原始向量搜索
 
 ### Q: 无法删除默认机器人
 
