@@ -91,6 +91,7 @@ class BotConfigRequest(BaseModel):
     enable_qa_match: Optional[bool] = None
     enable_chitchat: Optional[bool] = None
     rag_top_k: Optional[int] = None
+    rag_rerank_top_k: Optional[int] = None
     qa_match_threshold: Optional[float] = None
     enable_rating: Optional[bool] = None
     require_feedback: Optional[bool] = None
@@ -319,10 +320,12 @@ async def get_config(bot_id: str, _: dict = Depends(verify_admin_token)):
                 "timeout_message": config.timeout_message,
                 "personality": config.personality,
                 "response_tone": config.response_tone,
+                "system_prompt": config.system_prompt,
                 "enable_rag": config.enable_rag,
                 "enable_qa_match": config.enable_qa_match,
                 "enable_chitchat": config.enable_chitchat,
                 "rag_top_k": config.rag_top_k,
+                "rag_rerank_top_k": config.rag_rerank_top_k,
                 "qa_match_threshold": config.qa_match_threshold,
                 "enable_rating": config.enable_rating,
                 "require_feedback": config.require_feedback

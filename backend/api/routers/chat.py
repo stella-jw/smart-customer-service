@@ -158,6 +158,7 @@ async def send_message(request: ChatRequest, authorization: Optional[str] = Head
                     "enable_qa_match": bot_config.enable_qa_match,
                     "enable_chitchat": bot_config.enable_chitchat,
                     "rag_top_k": bot_config.rag_top_k,
+                    "rag_rerank_top_k": bot_config.rag_rerank_top_k,
                     "qa_match_threshold": bot_config.qa_match_threshold,
                     "industry_type": bot.industry_type
                 }

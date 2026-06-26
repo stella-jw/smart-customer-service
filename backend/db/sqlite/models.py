@@ -177,7 +177,8 @@ class BotConfiguration(Base):
     enable_suggestions = Column(Boolean, default=True)
 
     # 检索参数
-    rag_top_k = Column(Integer, default=5)
+    rag_top_k = Column(Integer, default=15)
+    rag_rerank_top_k = Column(Integer, default=5)  # 精排后返回数量
     qa_match_threshold = Column(Float, default=0.85)
 
     # 评价设置

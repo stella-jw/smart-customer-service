@@ -125,9 +125,25 @@
           <h2>检索参数</h2>
           <div class="form-grid">
             <div class="form-group">
-              <label>RAG检索数量 (top_k)</label>
+              <label>RAG检索数量</label>
               <input v-model.number="config.rag_top_k" type="number" min="1" max="20" />
+              <span class="field-hint">内部检索候选数量，建议 10-20</span>
             </div>
+            <div class="form-group">
+              <label>
+                精排返回数量
+                <span class="tooltip" title="Reranker 精排后返回的结果数量，必须小于等于检索数量">ⓘ</span>
+              </label>
+              <input
+                v-model.number="config.rag_rerank_top_k"
+                type="number"
+                min="1"
+                :max="config.rag_top_k"
+              />
+              <span class="field-hint">精排后返回数量，必须 ≤ 检索数量</span>
+            </div>
+          </div>
+          <div class="form-grid">
             <div class="form-group">
               <label>QA匹配阈值</label>
               <input v-model.number="config.qa_match_threshold" type="number" min="0" max="1" step="0.05" />
@@ -167,7 +183,8 @@ const config = reactive({
   enable_rag: true,
   enable_qa_match: true,
   enable_chitchat: true,
-  rag_top_k: 5,
+  rag_top_k: 15,
+  rag_rerank_top_k: 5,
   qa_match_threshold: 0.85
 })
 
@@ -264,6 +281,11 @@ async function saveConfig() {
     alert('系统提示词格式不正确，请检查后重试')
     return
   }
+  // 校验 rag_rerank_top_k <= rag_top_k
+  if (config.rag_rerank_top_k > config.rag_top_k) {
+    alert('精排返回数量不能大于检索数量')
+    return
+  }
   saving.value = true
   try {
     await adminApi.updateBotConfig(currentBotId.value, config)
@@ -335,6 +357,25 @@ h1 { margin: 0 0 8px 0; font-size: 24px; color: #333; }
 }
 
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.field-hint {
+  display: block;
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+
+.tooltip {
+  display: inline-block;
+  margin-left: 4px;
+  cursor: help;
+  color: #999;
+  font-size: 14px;
+}
+
+.tooltip:hover {
+  color: #4a90d9;
+}
 
 .toggle-grid { display: flex; flex-direction: column; gap: 12px; }
 

@@ -103,7 +103,7 @@
 ┌───────────────────────────────────────┐
 │  3. RAG检索 (rag_retrieve)            │
 │     - 知识库向量搜索 (rag_top_k)        │
-│     - [可选] Cohere Rerank 精排        │
+│     - [可选] SiliconFlow Rerank 精排   │
 │     - 返回 rag_rerank_top_k 个结果     │
 └───────────────────────────────────────┘
     │
@@ -135,7 +135,8 @@
 | REST API | FastAPI |
 | 前端 | Vue 3 + Vite + TypeScript |
 | 文档解析 | PyPDF2/pdfplumber + python-docx |
-| Rerank精排 | Cohere Rerank API（cohere-rerank-3.5） |
+| Rerank精排 | SiliconFlow Rerank API（BAAI/bge-reranker-v2-m3） |
+| 可观测性 | LangSmith（LLM 应用 tracing 与调试） |
 
 ## 项目结构
 
@@ -223,9 +224,19 @@ cp .env.example .env  # 如有 .env.example
 # MiniMax API Key（从 MiniMax 开放平台获取）
 MINIMAX_API_KEY=your-minimax-api-key
 
-# Cohere API Key（从 https://dashboard.cohere.com/api-keys 获取）
+# SiliconFlow API Key（从 https://www.siliconflow.cn 获取）
 # 用于 Rerank 精排功能，如不配置则自动跳过精排
-COHERE_API_KEY=your-cohere-api-key
+SILICONFLOW_API_KEY=your-siliconflow-api-key
+```
+
+**可选配置：**
+
+```bash
+# LangSmith（从 https://langchain.com/langsmith 免费获取）
+# 用于 LLM 应用 tracing 与调试，可视化查看检索/生成链路
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=your-langsmith-api-key
+LANGSMITH_PROJECT=smart-customer-service
 ```
 
 ### 5. 初始化数据库
@@ -314,10 +325,10 @@ npm run dev
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `rag_top_k` | 15 | 内部向量搜索候选数量，建议 10-20 |
-| `rag_rerank_top_k` | 5 | Cohere Rerank 精排后返回数量，必须 ≤ rag_top_k |
+| `rag_rerank_top_k` | 5 | SiliconFlow Rerank 精排后返回数量，必须 ≤ rag_top_k |
 | `qa_match_threshold` | 0.85 | QA 匹配相似度阈值 |
 
-> **Rerank 精排机制**：当 `COHERE_API_KEY` 配置后，系统会先用 `rag_top_k` 进行向量搜索获取候选文档，再通过 Cohere Rerank API 进行精排，返回最相关的 `rag_rerank_top_k` 个结果。未配置 API Key 时，自动 fallback 到原始向量搜索。
+> **Rerank 精排机制**：当 `SILICONFLOW_API_KEY` 配置后，系统会先用 `rag_top_k` 进行向量搜索获取候选文档，再通过 SiliconFlow Rerank API 进行精排，返回最相关的 `rag_rerank_top_k` 个结果。未配置 API Key 时，自动 fallback 到原始向量搜索。
 
 ## 行业模板
 
@@ -362,8 +373,8 @@ rm -rf ./data/chroma_db/
 
 ### Q: Rerank 精排不生效
 
-1. 确认 `.env` 中已配置 `COHERE_API_KEY`
-2. 检查后端日志是否包含 `[Reranker] Cohere 精排完成` 信息
+1. 确认 `.env` 中已配置 `SILICONFLOW_API_KEY`
+2. 检查后端日志是否包含 `[Reranker] SiliconFlow 精排完成` 信息
 3. 如未配置 API Key，系统自动 fallback 到原始向量搜索
 
 ### Q: 无法删除默认机器人

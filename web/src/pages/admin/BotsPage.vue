@@ -420,7 +420,10 @@ async function updateBot() {
   if (!editingBot.value) return
   try {
     const { name, industry_type, description, system_prompt } = editBotForm.value
-    await adminApi.updateBotConfig(editingBot.value.id, { name, industry_type, description, system_prompt })
+    // 更新 bots 表 (name, industry_type, description)
+    await adminApi.updateBot(editingBot.value.id, { name, industry_type, description })
+    // 更新 bot_configurations 表 (system_prompt)
+    await adminApi.updateBotConfig(editingBot.value.id, { system_prompt })
     showEditModal.value = false
     await fetchBots()
   } catch (e) {
