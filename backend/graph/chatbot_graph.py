@@ -3,31 +3,31 @@
 智能客服 LangGraph 工作流
 =============================================
 
-工作流图:
+工作流图 (融合检索版):
     START → classify_intent → route_intent
                                   ↓
               ┌───────────────────┼───────────────────┐
               ↓                   ↓                   ↓
           greeting            question            chitchat/complaint
               ↓                   ↓                   ↓
-              │         ┌─────────┴─────────┐        │
-              │         ↓                   ↓        │
-              │     qa_match           rag_retrieve   │
-              │         ↓                   ↓        │
-              │         └─────────┬─────────┘        │
               │                   ↓                   │
-              │              generate                 │
-              │                   ↓                   │
-              └──────────────►respond◄────────────────┘
-                                  ↓
+              │         ┌───────┴───────┐           │
+              │         ↓               ↓           │
+              │   fusion_retrieve    generate        │
+              │         ↓               ↓           │
+              │         └──────►respond◄────────────┘
+              │                   ↓
                                END
+
+融合检索:
+    question → fusion_retrieve (向量+关键词+QA并行) → generate → respond
 """
 
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 
 from .state import CustomerServiceState, QuerySource, Intent, create_initial_state
-from .nodes import classify_intent, qa_match, rag_retrieve, generate_response, respond
+from .nodes import classify_intent, fusion_retrieve, generate_response, respond
 
 
 def route_intent(state: CustomerServiceState) -> str:
@@ -71,8 +71,7 @@ def create_chatbot_graph() -> StateGraph:
 
     # 添加节点
     workflow.add_node("classify_intent", classify_intent)
-    workflow.add_node("qa_match", qa_match)
-    workflow.add_node("rag_retrieve", rag_retrieve)
+    workflow.add_node("fusion_retrieve", fusion_retrieve)
     workflow.add_node("generate", generate_response)
     workflow.add_node("respond", respond)
 
@@ -90,46 +89,19 @@ def create_chatbot_graph() -> StateGraph:
         else:
             return "other"
 
-    # question分支后的路由函数
-    def route_after_qa(state: CustomerServiceState) -> str:
-        """在qa_match之后判断走哪条路"""
-        qa_score = state.get("qa_match_score", 0.0)
-        threshold = state.get("bot_config", {}).get("qa_match_threshold", 0.85)
-        matched_answer = state.get("matched_qa_answer", "")
-
-        print(f"[DEBUG route_after_qa] qa_score={qa_score}, threshold={threshold}")
-        print(f"[DEBUG route_after_qa] matched_qa_answer='{matched_answer[:50] if matched_answer else None}...'")
-
-        if qa_score >= threshold:
-            print("[DEBUG route_after_qa] -> respond (QA hit)")
-            return "respond"
-        else:
-            print("[DEBUG route_after_qa] -> rag_retrieve (QA miss)")
-            return "rag_retrieve"
-
     # 条件边：意图分类后路由
     workflow.add_conditional_edges(
         "classify_intent",
         route_by_intent,
         {
             "greeting": "respond",
-            "question": "qa_match",  # question直接到qa_match
+            "question": "fusion_retrieve",
             "other": "generate"
         }
     )
 
-    # question路由：qa_match后再路由
-    workflow.add_conditional_edges(
-        "qa_match",
-        route_after_qa,
-        {
-            "respond": "respond",
-            "rag_retrieve": "rag_retrieve"
-        }
-    )
-
-    # rag_retrieve后生成并回复
-    workflow.add_edge("rag_retrieve", "generate")
+    # fusion_retrieve后生成并回复
+    workflow.add_edge("fusion_retrieve", "generate")
     workflow.add_edge("generate", "respond")
 
     # 结束
@@ -177,13 +149,33 @@ def chat(
             "reference_qa_id": str   # 引用的QA对ID
         }
     """
+    # 获取对话历史
+    max_history_turns = 5
+    if bot_config and "max_history_turns" in bot_config:
+        max_history_turns = bot_config["max_history_turns"]
+
+    from ..db.sqlite.crud import get_conversation_history, get_db_session
+    conversation_history = []
+    try:
+        with get_db_session() as db:
+            conversation_history = get_conversation_history(
+                db=db,
+                bot_id=bot_id,
+                session_id=session_id,
+                max_turns=max_history_turns
+            )
+    except Exception as e:
+        print(f"[chat] 获取对话历史失败: {e}")
+
     # 创建初始状态
     initial_state = create_initial_state(
         user_input=user_input,
         session_id=session_id,
         bot_id=bot_id,
         user_id=user_id,
-        bot_config=bot_config
+        bot_config=bot_config,
+        conversation_history=conversation_history,
+        context_turns=len(conversation_history) // 2  # 每轮=2条消息
     )
 
     # 执行图

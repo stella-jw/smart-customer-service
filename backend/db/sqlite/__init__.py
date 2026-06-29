@@ -21,7 +21,7 @@ from .crud import (
     create_qa_pair, get_qa_pair, get_bot_qa_pairs, update_qa_pair, delete_qa_pair,
     increment_qa_usage, update_qa_satisfaction,
     # Conversation
-    create_conversation, get_conversation, get_session_conversations, get_user_sessions,
+    create_conversation, get_conversation, get_session_conversations, get_user_sessions, get_conversation_history,
     # Rating
     create_rating, get_conversation_rating,
     # Config
@@ -51,7 +51,7 @@ __all__ = [
     "create_document", "get_document", "get_bot_documents", "update_document", "delete_document",
     "create_qa_pair", "get_qa_pair", "get_bot_qa_pairs", "update_qa_pair", "delete_qa_pair",
     "increment_qa_usage", "update_qa_satisfaction",
-    "create_conversation", "get_conversation", "get_session_conversations", "get_user_sessions",
+    "create_conversation", "get_conversation", "get_session_conversations", "get_user_sessions", "get_conversation_history",
     "create_rating", "get_conversation_rating",
     "get_bot_config", "update_bot_config",
     "create_industry_template", "get_industry_template", "get_all_templates",

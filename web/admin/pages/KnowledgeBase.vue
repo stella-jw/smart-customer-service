@@ -193,7 +193,7 @@ async function uploadDocument() {
 
 async function reindex(docId: string) {
   try {
-    await fetch(`/api/admin/documents/${docId}/reindex`, { method: 'POST' })
+    await fetch(`/api/admin/documents/${docId}/reindex?chunker_type=title_aware`, { method: 'POST' })
     loadDocuments()
   } catch (error) {
     console.error('重新索引失败:', error)

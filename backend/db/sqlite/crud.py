@@ -6,7 +6,7 @@ SQLite CRUD 操作
 
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import and_, or_
 
@@ -295,6 +295,36 @@ def get_session_conversations(db: Session, bot_id: str, session_id: str) -> List
     return db.query(Conversation).filter(
         and_(Conversation.bot_id == bot_id, Conversation.session_id == session_id)
     ).order_by(Conversation.created_at).all()
+
+
+def get_conversation_history(
+    db: Session,
+    bot_id: str,
+    session_id: str,
+    max_turns: int = 5
+) -> List[Dict[str, str]]:
+    """
+    获取指定数量的历史对话
+
+    Args:
+        db: 数据库 session
+        bot_id: 机器人 ID
+        session_id: 会话 ID
+        max_turns: 最大轮数（每轮=用户+客服），默认 5
+
+    Returns:
+        对话历史列表，格式: [{"role": "user"/"assistant", "content": "..."}]
+    """
+    conversations = get_session_conversations(db, bot_id, session_id)
+
+    # 取最近 max_turns 轮（每轮=用户+客服=2条消息）
+    history = []
+    for conv in reversed(conversations[-max_turns * 2:]):
+        history.insert(0, {
+            "role": "user" if conv.is_from_user else "assistant",
+            "content": conv.message
+        })
+    return history
 
 
 def get_user_sessions(db: Session, bot_id: str, user_id: str = None,

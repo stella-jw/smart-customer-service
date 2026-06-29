@@ -94,6 +94,8 @@ def rerank(query: str, candidates: List[Dict[str, Any]], top_k: int = 5) -> List
         results.sort(key=lambda x: x['rerank_score'], reverse=True)
 
         print(f"[Reranker] SiliconFlow 精排完成: {len(candidates)} -> {len(results)}")
+        for i, r in enumerate(results):
+            print(f"[Reranker DEBUG] Rank {i}: score={r['rerank_score']:.4f}, content_preview={r.get('content', '')[:60]}...")
         return results
 
     except RerankerError:

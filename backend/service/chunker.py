@@ -277,13 +277,216 @@ class RecursiveChunker(ChunkStrategy):
             chunk["metadata"]["total_chunks"] = len(chunks)
 
 
+class TitleAwareChunker(ChunkStrategy):
+    """
+    标题感知分块器
+
+    专门处理古诗、文档集等有明确标题结构的文本
+    策略：
+    1. 按标题（《...》）分割
+    2. 每个标题下的内容作为一个独立chunk
+    3. 如果单个块过大，按段落继续分割
+    """
+
+    def __init__(self, max_chunk_size: int = 800, min_chunk_size: int = 50):
+        """
+        Args:
+            max_chunk_size: 每个块的最大字符数
+            min_chunk_size: 每个块的最小字符数（太小的会合并到下一个）
+        """
+        self.max_chunk_size = max_chunk_size
+        self.min_chunk_size = min_chunk_size
+
+    def chunk(self, text: str, metadata: dict) -> List[Dict[str, Any]]:
+        """执行分块"""
+        # 按标题分割文本
+        sections = self._split_by_titles(text)
+
+        chunks = []
+        for section_text, section_title in sections:
+            if not section_text.strip():
+                continue
+
+            # 如果单个section就超过max_chunk_size，用FixedSize分块
+            if len(section_text) > self.max_chunk_size:
+                fixed_chunks = FixedSizeChunker(
+                    chunk_size=self.max_chunk_size,
+                    overlap=50
+                ).chunk(section_text, metadata)
+
+                # 为每个子chunk添加title信息
+                for chunk in fixed_chunks:
+                    chunk["metadata"]["section_title"] = section_title
+                    chunk["metadata"]["is_section"] = True
+                    chunks.append(chunk)
+            else:
+                chunks.append({
+                    "content": section_text.strip(),
+                    "metadata": {
+                        **metadata.copy(),
+                        "section_title": section_title,
+                        "is_section": True
+                    }
+                })
+
+        # 合并太小的chunk
+        chunks = self._merge_small_chunks(chunks)
+
+        # 添加index
+        for i, chunk in enumerate(chunks):
+            chunk["metadata"]["chunk_index"] = i
+            chunk["metadata"]["total_chunks"] = len(chunks)
+
+        return chunks
+
+    def _split_by_titles(self, text: str) -> List[tuple]:
+        """
+        按标题分割文本
+
+        Returns:
+            [(content, title), ...]
+        """
+        # 使用《...》作为标题分隔符
+        title_pattern = r'《([^》]+)》'
+
+        sections = []
+        current_section_lines = []
+        current_title = "通用内容"
+
+        # 找到所有标题的位置
+        title_matches = list(re.finditer(title_pattern, text))
+
+        if not title_matches:
+            # 没有标题，整段作为一个section
+            return [(text.strip(), "通用内容")]
+
+        # 处理第一个标题之前的内容
+        first_title_pos = title_matches[0].start()
+        if first_title_pos > 0:
+            before_text = text[:first_title_pos].strip()
+            if before_text:
+                for para in before_text.split('\n\n'):
+                    if para.strip():
+                        current_section_lines.append(para.strip())
+
+        # 处理每个标题及其内容
+        for i, match in enumerate(title_matches):
+            title = match.group(1)
+            title_start = match.end()
+
+            # 确定当前标题的内容范围（到下一个标题之前）
+            if i + 1 < len(title_matches):
+                title_end = title_matches[i + 1].start()
+            else:
+                title_end = len(text)
+
+            content_after_title = text[title_start:title_end]
+
+            # 保存之前的section
+            if current_section_lines:
+                sections.append(('\n'.join(current_section_lines), current_title))
+
+            # 开始新section
+            current_title = title
+            current_section_lines = []
+
+            # 先添加标题标记
+            current_section_lines.append(f"《{title}》")
+
+            # 逐行处理内容，遇到章节标记（单元、课等）就停止
+            section_header_pattern = re.compile(r'^(第[一二三四五六七八九十百零\d]+[单元课节]|第\d+课|语文园地|日积月累)')
+            in_section_content = False
+
+            for line in content_after_title.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+
+                # 检查是否是章节标记行
+                if section_header_pattern.match(line):
+                    if not in_section_content:
+                        continue
+                    else:
+                        break
+
+                # 检查是否是下一个标题的预告（如 "第4课古诗三首"）
+                if re.match(r'^第\d+课', line) and '古诗' in line:
+                    if not in_section_content:
+                        continue
+                    else:
+                        break
+
+                # 转换 [朝代]作者名 为 作者：作者名 格式
+                line = self._convert_author_format(line)
+
+                # 这行是诗歌内容
+                current_section_lines.append(line)
+                in_section_content = True
+
+        # 保存最后一个section
+        if current_section_lines:
+            sections.append(('\n'.join(current_section_lines), current_title))
+
+        return sections
+
+    def _convert_author_format(self, line: str) -> str:
+        """转换 [朝代]作者名 为 作者：作者名 格式"""
+        # 匹配 [朝代]作者名 或 [朝代] 作者名 格式，转换为 作者：作者名
+        # 例如: [清]袁枚 -> 作者：袁枚
+        match = re.match(r'^\[([^\]]+)\]\s*([^\[【\n《》].+)$', line)
+        if match:
+            author = match.group(2).strip()
+            return f"作者：{author}"
+        return line
+
+    def _merge_small_chunks(self, chunks: List[Dict]) -> List[Dict]:
+        """合并太小的chunk到下一个（仅限同标题）"""
+        if not chunks:
+            return chunks
+
+        merged = []
+        buffer = None
+
+        for chunk in chunks:
+            chunk_title = chunk["metadata"].get("section_title")
+
+            if len(chunk["content"]) < self.min_chunk_size:
+                # 小chunk
+                if buffer is None:
+                    buffer = chunk
+                else:
+                    # 检查标题是否相同
+                    if buffer["metadata"].get("section_title") == chunk_title:
+                        buffer["content"] += "\n\n" + chunk["content"]
+                    else:
+                        # 标题不同，buffer先输出，再把当前chunk放入buffer
+                        merged.append(buffer)
+                        buffer = chunk
+            else:
+                # 大chunk，先处理buffer
+                if buffer is not None:
+                    if buffer["metadata"].get("section_title") == chunk_title:
+                        chunk["content"] = buffer["content"] + "\n\n" + chunk["content"]
+                    else:
+                        merged.append(buffer)
+                    buffer = None
+                merged.append(chunk)
+
+        # 处理最后一个buffer
+        if buffer is not None:
+            merged.append(buffer)
+
+        return merged
+
+
 # 工厂函数
 def get_chunker(chunker_type: str = "fixed", **kwargs) -> ChunkStrategy:
     """获取分块器"""
     chunkers = {
         "fixed": FixedSizeChunker,
         "semantic": SemanticChunker,
-        "recursive": RecursiveChunker
+        "recursive": RecursiveChunker,
+        "title_aware": TitleAwareChunker
     }
 
     chunker_class = chunkers.get(chunker_type.lower(), FixedSizeChunker)

@@ -72,7 +72,9 @@ def create_initial_state(
     session_id: str,
     bot_id: str,
     user_id: Optional[str] = None,
-    bot_config: Optional[Dict[str, Any]] = None
+    bot_config: Optional[Dict[str, Any]] = None,
+    conversation_history: Optional[List[Dict[str, str]]] = None,
+    context_turns: int = 0
 ) -> CustomerServiceState:
     """创建初始状态"""
 
@@ -108,8 +110,8 @@ def create_initial_state(
         rag_top_k=default_config.get("rag_top_k", 5),
         generated_response="",
         final_response="",
-        conversation_history=[],
-        context_turns=0,
+        conversation_history=conversation_history or [],
+        context_turns=context_turns,
         bot_config=default_config,
         source=QuerySource.LLM,
         reference_doc_id=None,

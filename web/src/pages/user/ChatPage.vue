@@ -13,7 +13,7 @@
           :key="msg.id"
           :class="['message', msg.isFromUser ? 'user' : 'bot']"
         >
-          <div class="message-content">{{ msg.content }}</div>
+          <div class="message-content" v-html="renderMarkdown(msg.content)"></div>
           <div class="message-meta">
             <span v-if="msg.source && !msg.isFromUser" class="source-tag">
               {{ getSourceLabel(msg.source) }}
@@ -75,9 +75,21 @@
 
 <script setup lang="ts">
 import { ref, reactive, nextTick, onMounted, onUnmounted, computed, watch } from 'vue'
+import { marked } from 'marked'
 import { chatApi, auth } from '@/api'
 import BotSwitcher from '@/components/BotSwitcher.vue'
 import { useBotStore } from '@/stores/botStore'
+
+// 配置 marked 选项
+marked.setOptions({
+  breaks: true,  // 允许 GFM 换行符 (\n) 转换为 <br>
+  gfm: true      // 启用 GitHub  flavored markdown
+})
+
+// 渲染 Markdown 内容的函数
+function renderMarkdown(content: string): string {
+  return marked.parse(content) as string
+}
 
 const botStore = useBotStore()
 const botId = computed(() => botStore.currentBotId.value || null)
@@ -310,6 +322,7 @@ onUnmounted(() => {
   padding: 12px 16px;
   border-radius: 12px;
   line-height: 1.5;
+  text-align: left;
 }
 
 .message.user {
@@ -319,11 +332,94 @@ onUnmounted(() => {
   border-bottom-right-radius: 4px;
 }
 
+/* 用户消息中的 Markdown 样式 */
+.message.user :deep(h1),
+.message.user :deep(h2),
+.message.user :deep(h3),
+.message.user :deep(h4) {
+  color: white;
+}
+.message.user :deep(code) {
+  background: rgba(255, 255, 255, 0.2);
+}
+.message.user :deep(pre) {
+  background: rgba(255, 255, 255, 0.2);
+}
+.message.user :deep(blockquote) {
+  border-left-color: rgba(255, 255, 255, 0.5);
+  color: rgba(12, 111, 41, 0.9);
+}
+
 .message.bot {
   align-self: flex-start;
   background: #f0f0f0;
   color: #333;
   border-bottom-left-radius: 4px;
+}
+
+/* Markdown 内容样式 */
+.message-content :deep(h1),
+.message-content :deep(h2),
+.message-content :deep(h3),
+.message-content :deep(h4) {
+  margin: 0.5em 0;
+  font-weight: 600;
+}
+.message-content :deep(h1) { font-size: 1.3em; }
+.message-content :deep(h2) { font-size: 1.1em; }
+.message-content :deep(h3) { font-size: 1em; }
+
+.message-content :deep(p) {
+  margin: 0.5em 0;
+}
+
+.message-content :deep(ul),
+.message-content :deep(ol) {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.message-content :deep(li) {
+  margin: 0.25em 0;
+}
+
+.message-content :deep(code) {
+  background: rgba(128, 128, 128, 0.2);
+  color: #2e7d32;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.message-content :deep(pre) {
+  background: rgba(128, 128, 128, 0.2);
+  color: #2e7d32;
+  padding: 0.5em;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+.message-content :deep(pre code) {
+  background: none;
+  color: inherit;
+  padding: 0;
+}
+
+.message-content :deep(strong) {
+  font-weight: 600;
+}
+
+.message-content :deep(em) {
+  font-style: italic;
+}
+
+.message-content :deep(blockquote) {
+  border-left: 3px solid #0c561e;
+  margin: 0.5em 0;
+  padding-left: 1em;
+  color: #666;
 }
 
 .message-meta {

@@ -38,6 +38,10 @@ def rag_retrieve(state: CustomerServiceState) -> CustomerServiceState:
             top_k=rag_top_k
         )
 
+        # DEBUG: 打印原始检索结果
+        print(f"[RAG DEBUG] Query: {user_input}")
+        print(f"[RAG DEBUG] Vector search returned {len(results.get('documents', [[]])[0])} results")
+
         # 构建候选文档列表
         candidates = []
         if results.get("documents") and results["documents"][0]:
@@ -48,8 +52,10 @@ def rag_retrieve(state: CustomerServiceState) -> CustomerServiceState:
                     "document_id": metadata.get("document_id"),
                     "title": metadata.get("title", ""),
                     "section": metadata.get("section", ""),
+                    "section_title": metadata.get("section_title", ""),
                     "score": results["distances"][0][i] if results.get("distances") else 1.0
                 })
+                print(f"[RAG DEBUG] Candidate {i}: score={results['distances'][0][i]:.4f}, section_title={metadata.get('section_title', 'N/A')}, content_preview={doc[:60]}...")
 
         if not candidates:
             return {

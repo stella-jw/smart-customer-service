@@ -18,6 +18,7 @@ from .chunker import (
     FixedSizeChunker,
     SemanticChunker,
     RecursiveChunker,
+    TitleAwareChunker,
     get_chunker
 )
 
@@ -33,5 +34,6 @@ __all__ = [
     "FixedSizeChunker",
     "SemanticChunker",
     "RecursiveChunker",
+    "TitleAwareChunker",
     "get_chunker"
 ]

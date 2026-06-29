@@ -244,7 +244,7 @@ export const adminApi = {
     authFetch(`${API_BASE}/api/admin/documents/${docId}`, { method: 'DELETE' }).then(r => r.json()),
 
   reindexDocument: (docId: string) =>
-    authFetch(`${API_BASE}/api/admin/documents/${docId}/reindex`, { method: 'POST' }).then(r => r.json()),
+    authFetch(`${API_BASE}/api/admin/documents/${docId}/reindex?chunker_type=title_aware`, { method: 'POST' }).then(r => r.json()),
 
   // QA
   getQA: (botId: string) =>

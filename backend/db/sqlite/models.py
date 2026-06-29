@@ -181,6 +181,9 @@ class BotConfiguration(Base):
     rag_rerank_top_k = Column(Integer, default=5)  # 精排后返回数量
     qa_match_threshold = Column(Float, default=0.85)
 
+    # 对话历史参数
+    max_history_turns = Column(Integer, default=5)  # 最大历史轮数（每轮=用户+客服）
+
     # 评价设置
     enable_rating = Column(Boolean, default=True)
     require_feedback = Column(Boolean, default=False)

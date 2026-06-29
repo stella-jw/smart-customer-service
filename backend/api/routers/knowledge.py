@@ -103,13 +103,13 @@ def save_upload_file(file: UploadFile, bot_id: str) -> str:
 # 文档处理函数
 # =============================================
 
-async def process_document_task(document_id: str, bot_id: str, file_path: str, file_type: str):
+async def process_document_task(document_id: str, bot_id: str, file_path: str, file_type: str, chunker_type: str = "fixed"):
     """异步文档处理任务"""
-    print(f"[DocumentTask] Starting: document_id={document_id}, bot_id={bot_id}, file_path={file_path}")
+    print(f"[DocumentTask] Starting: document_id={document_id}, bot_id={bot_id}, file_path={file_path}, chunker={chunker_type}")
     try:
         from ...db.sqlite.crud import get_db_session
         from ...service.document_parser import DocumentParser
-        from ...service.chunker import FixedSizeChunker
+        from ...service.chunker import get_chunker
         from ...db.chroma import TenantChromaManager, create_chunk_id
 
         # 检查文件是否存在
@@ -129,12 +129,13 @@ async def process_document_task(document_id: str, bot_id: str, file_path: str, f
 
         # 分块
         print(f"[DocumentTask] Chunking document: {document_id}")
-        chunker = FixedSizeChunker(chunk_size=500, overlap=50)
+        chunker = get_chunker(chunker_type)
         chunks = chunker.chunk(text, {
             "document_id": document_id,
-            "bot_id": bot_id
+            "bot_id": bot_id,
+            "chunker_type": chunker_type
         })
-        print(f"[DocumentTask] Created {len(chunks)} chunks")
+        print(f"[DocumentTask] Created {len(chunks)} chunks using {chunker_type}")
 
         # 存储到ChromaDB
         print(f"[DocumentTask] Storing to ChromaDB: {document_id}")
@@ -320,29 +321,54 @@ async def delete_document_file(document_id: str, _: dict = Depends(verify_admin_
 
 
 @router.post("/documents/{document_id}/reindex")
-async def reindex_document(document_id: str, background_tasks: BackgroundTasks, _: dict = Depends(verify_admin_token)):
-    """重新索引文档"""
+async def reindex_document(
+    document_id: str,
+    background_tasks: BackgroundTasks,
+    chunker_type: str = "fixed",
+    _: dict = Depends(verify_admin_token)
+):
+    """重新索引文档
+
+    Args:
+        chunker_type: 分块策略，可选:
+            - fixed: 固定大小分块（默认）
+            - title_aware: 标题感知分块（适合古诗、文档集）
+    """
     try:
+        # 验证chunker_type
+        valid_chunker_types = ["fixed", "title_aware"]
+        if chunker_type not in valid_chunker_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的分块策略: {chunker_type}，可选: {valid_chunker_types}"
+            )
+
         with get_db_session() as db:
             doc = get_document(db, document_id)
             if not doc:
                 raise HTTPException(status_code=404, detail="文档不存在")
 
+            # 在 session 关闭前提取所需字段
+            doc_bot_id = doc.bot_id
+            doc_file_path = doc.file_path
+            doc_file_type = doc.file_type
+
             # 先删除旧的ChromaDB数据
             from ...db.chroma import TenantChromaManager
-            chroma_manager = TenantChromaManager(doc.bot_id)
+            chroma_manager = TenantChromaManager(doc_bot_id)
             chroma_manager.delete_kb_chunks(document_id)
 
         # 重新处理
         background_tasks.add_task(
             process_document_task,
             document_id=document_id,
-            bot_id=doc.bot_id,
-            file_path=doc.file_path,
-            file_type=doc.file_type
+            bot_id=doc_bot_id,
+            file_path=doc_file_path,
+            file_type=doc_file_type,
+            chunker_type=chunker_type
         )
 
-        return {"success": True, "message": "文档重新索引中"}
+        return {"success": True, "message": f"文档重新索引中（使用 {chunker_type} 分块策略）"}
 
     except HTTPException:
         raise
